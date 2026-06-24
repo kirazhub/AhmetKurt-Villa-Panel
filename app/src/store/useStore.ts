@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Faz, Mahal, IsKalemi, Taseron, Teklif, Odeme, Belge, Proje, IceAktarPaket } from '../types';
+import type { Faz, Mahal, IsKalemi, Taseron, Teklif, Odeme, Belge, Proje } from '../types';
 import { PROJE, FAZLAR, MAHALLER, IS_KALEMLERI } from '../data/seed';
 import { uid } from '../lib/format';
 
@@ -19,7 +19,6 @@ interface State {
   teklifler: Teklif[];
   odemeler: Odeme[];
   belgeler: Belge[];
-  belgeBaglari: Record<string, { fazId?: string; isKalemiId?: string }>; // manifest dosyaId -> bağlantı
 
   // İş kalemleri
   isKalemiEkle: (k: Omit<IsKalemi, 'id'>) => string;
@@ -47,9 +46,6 @@ interface State {
   belgeGuncelle: (id: string, patch: Partial<Belge>) => void;
   belgeSil: (id: string) => void;
 
-  // Manifest dosyalarını faz/iş kalemine bağlama (disk yerine store'da tutulur)
-  belgeBagla: (dosyaId: string, patch: { fazId?: string; isKalemiId?: string }) => void;
-
   // Proje künyesi
   projeGuncelle: (patch: Partial<Proje>) => void;
 
@@ -57,9 +53,6 @@ interface State {
   sifirla: () => void; // her şeyi seed'e döndürür
   disaAktar: () => string; // JSON yedek
   iceAktar: (json: string) => boolean;
-
-  // AI içe-aktarma (additive — üstüne YAZMAZ, sadece ekler)
-  iceAktarPaket: (p: IceAktarPaket) => { eklenenIs: number; eklenenTeklif: number; eklenenTaseron: number };
 }
 
 export const useStore = create<State>()(
@@ -73,7 +66,6 @@ export const useStore = create<State>()(
       teklifler: [],
       odemeler: [],
       belgeler: [],
-      belgeBaglari: {},
 
       isKalemiEkle: (k) => {
         const id = uid('ik');
@@ -137,15 +129,12 @@ export const useStore = create<State>()(
       belgeSil: (id) =>
         set((s) => ({ belgeler: s.belgeler.filter((x) => x.id !== id) })),
 
-      belgeBagla: (dosyaId, patch) =>
-        set((s) => ({ belgeBaglari: { ...s.belgeBaglari, [dosyaId]: { ...s.belgeBaglari[dosyaId], ...patch } } })),
-
       projeGuncelle: (patch) => set((s) => ({ proje: { ...s.proje, ...patch } })),
 
       sifirla: () =>
         set({
           proje: PROJE, fazlar: FAZLAR, mahaller: MAHALLER, isKalemleri: IS_KALEMLERI,
-          taseronlar: [], teklifler: [], odemeler: [], belgeler: [], belgeBaglari: {},
+          taseronlar: [], teklifler: [], odemeler: [], belgeler: [],
         }),
 
       disaAktar: () => {
@@ -169,18 +158,6 @@ export const useStore = create<State>()(
         } catch {
           return false;
         }
-      },
-
-      iceAktarPaket: (p) => {
-        const yeniIs = (p.isKalemleri ?? []).map((k) => ({ ...k, id: uid('ik') }));
-        const yeniTeklif = (p.teklifler ?? []).map((t) => ({ ...t, id: uid('tk') }));
-        const yeniTaseron = (p.taseronlar ?? []).map((t) => ({ ...t, id: uid('ts') }));
-        set((s) => ({
-          isKalemleri: [...s.isKalemleri, ...yeniIs],
-          teklifler: [...s.teklifler, ...yeniTeklif],
-          taseronlar: [...s.taseronlar, ...yeniTaseron],
-        }));
-        return { eklenenIs: yeniIs.length, eklenenTeklif: yeniTeklif.length, eklenenTaseron: yeniTaseron.length };
       },
     }),
     { name: 'ahmet-kurt-villa-panel', version: 1 },

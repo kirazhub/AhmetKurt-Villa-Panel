@@ -2,21 +2,20 @@ import { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, ListChecks, HardHat, Wallet, Receipt,
-  GitCompareArrows, Images, CalendarClock, Building2, Menu, X, PencilRuler, Sparkles,
+  GitCompareArrows, Images, CalendarClock, Building2, Menu, X, BookOpenText,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useStore } from '../store/useStore';
 
 export const NAV = [
   { to: '/', ad: 'Özet', ikon: LayoutDashboard, end: true },
+  { to: '/rehber', ad: 'İnşaat Rehberi', ikon: BookOpenText },
   { to: '/is-takibi', ad: 'İş Takibi', ikon: ListChecks },
   { to: '/taseronlar', ad: 'Taşeronlar', ikon: HardHat },
   { to: '/butce', ad: 'Bütçe / Maliyet', ikon: Wallet },
   { to: '/odemeler', ad: 'Hakediş & Ödeme', ikon: Receipt },
   { to: '/teklifler', ad: 'Teklif Karşılaştırma', ikon: GitCompareArrows },
   { to: '/belgeler', ad: 'Foto & Belge', ikon: Images },
-  { to: '/cizimler', ad: 'Teknik Çizimler', ikon: PencilRuler },
-  { to: '/ice-aktar', ad: 'İçe Aktar (AI)', ikon: Sparkles },
   { to: '/takvim', ad: 'Takvim / Termin', ikon: CalendarClock },
   { to: '/proje', ad: 'Proje Künyesi', ikon: Building2 },
 ];
