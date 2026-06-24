@@ -1,0 +1,23 @@
+# Bağımlılıklar (çok büyük — yedeklenmez, npm install ile geri gelir)
+node_modules/
+**/node_modules/
+
+# Derleme çıktıları
+dist/
+**/dist/
+dist-ssr/
+*.tsbuildinfo
+
+# Loglar
+*.log
+npm-debug.log*
+
+# İşletim sistemi / editör
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.local
+
+# Geçici
+/var/folders/
