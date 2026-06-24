@@ -8,12 +8,12 @@ dotenv.config();
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 8080;
-const KEY = process.env.ANTHROPIC_API_KEY;
-const API = 'https://api.anthropic.com/v1';
+const KEY = process.env.OPENROUTER_API_KEY;
+const API = 'https://openrouter.ai/api/v1';
 const HEADERS = () => ({
-  'x-api-key': KEY,
-  'anthropic-version': '2023-06-01',
-  'content-type': 'application/json',
+  Authorization: `Bearer ${KEY}`,
+  'Content-Type': 'application/json',
+  'X-Title': 'Ahmet Kurt Villa Paneli',
 });
 
 const app = express();
@@ -25,31 +25,32 @@ const yapilandirilmis = () => Boolean(KEY);
 // --- En güncel Opus modelini otomatik seç (env ile sabitlenebilir) ---
 let _model = null;
 async function modelSec() {
-  if (process.env.ANTHROPIC_MODEL && process.env.ANTHROPIC_MODEL.trim()) return process.env.ANTHROPIC_MODEL.trim();
+  if (process.env.OPENROUTER_MODEL && process.env.OPENROUTER_MODEL.trim()) return process.env.OPENROUTER_MODEL.trim();
   if (_model) return _model;
   try {
-    const r = await fetch(`${API}/models?limit=100`, { headers: HEADERS() });
+    const r = await fetch(`${API}/models`, { headers: HEADERS() });
     const d = await r.json();
-    const liste = (d.data || []).map((m) => m.id);
-    const opus = liste.filter((id) => id.includes('opus')).sort().reverse();
-    const sonnet = liste.filter((id) => id.includes('sonnet')).sort().reverse();
-    _model = opus[0] || sonnet[0] || liste[0] || 'claude-3-5-sonnet-latest';
+    const ids = (d.data || []).map((m) => m.id);
+    const opus = ids.filter((id) => id.includes('opus')).sort().reverse();
+    const sonnet = ids.filter((id) => id.includes('anthropic') && id.includes('sonnet')).sort().reverse();
+    _model = opus[0] || sonnet[0] || 'anthropic/claude-3.7-sonnet';
   } catch {
-    _model = 'claude-3-5-sonnet-latest';
+    _model = 'anthropic/claude-opus-4.8';
   }
   return _model;
 }
 
 // --- İnşaat uzmanı sistem promptu (proje bağlamı dinamik eklenir) ---
 function sistemPromptu(baglam) {
-  return `Sen "Ahmet Kurt Villa Projesi"nin kıdemli inşaat proje yöneticisi ve maliyet uzmanı yapay zekâ asistanısın. Türkiye'de villa/konut inşaatını baştan sona bilirsin: imar, ruhsat, yapı denetim, betonarme, tesisat, ince işler, maliyet, hakediş, taşeron yönetimi.
+  return `Sen "Ahmet Kurt Villa Projesi"nin kıdemli inşaat proje yöneticisi ve maliyet uzmanı yapay zekâ asistanısın. Türkiye'de villa/konut inşaatını baştan sona bilirsin: imar, ruhsat, yapı denetim, betonarme, tesisat, ince işler, maliyet, hakediş, taşeron yönetimi, malzeme tedariki.
 
 KULLANICI: İnşaat bilmeyen, kendi villasını yaptıran mal sahibi (aynı zamanda yönetici). Ona ASLA üstten bakma; teknik terimleri parantezle Türkçe açıkla, sabırlı ve net ol.
 
 GÖREVİN:
-- Sorularını yanıtla VE proaktif ol: riskleri, sıradaki adımları, dikkat noktalarını kendiliğinden hatırlat.
+- Sorularını yanıtla VE proaktif ol: riskleri, sıradaki adımları, dikkat noktalarını, MALİYET DÜŞÜRME fırsatlarını kendiliğinden hatırlat.
 - Cevabın KISA, somut ve eyleme dönük olsun (madde madde). Gereksiz uzatma.
-- Para konusunda dürüst ol: uydurma rakam verme; "en az 3 taşerondan teklif al, panele gir" de. Resmi ruhsat maliyeti (≈19,87M TL) sadece harç hesabıdır, gerçek maliyet değildir.
+- Para konusunda dürüst ol: uydurma rakam verme; "en az 3-5 firmadan teklif al" de. Resmi ruhsat maliyeti (≈19,87M TL) sadece harç hesabıdır, gerçek maliyet değildir.
+- Günlük rapor, haftalık yapılacaklar listesi ve geciken işler istendiğinde panel verisine göre net çıkar.
 - Güvenliği ve kaliteyi her zaman öne koy (su yalıtımı, temel, istinat, iş güvenliği).
 - Tüm cevaplar TÜRKÇE.
 
@@ -66,60 +67,56 @@ ${baglam || '(panel verisi gönderilmedi)'}
 Yukarıdaki anlık duruma göre, ilgili olduğunda somut atıf yap (örn. geciken iş, bütçe aşımı, sıradaki faz).`;
 }
 
+// OpenAI-uyumlu çağrı (OpenRouter)
+async function claude(systemMetin, mesajlar, maxTokens) {
+  const model = await modelSec();
+  const r = await fetch(`${API}/chat/completions`, {
+    method: 'POST',
+    headers: HEADERS(),
+    body: JSON.stringify({
+      model,
+      max_tokens: maxTokens,
+      messages: [
+        { role: 'system', content: systemMetin },
+        ...mesajlar.map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.icerik ?? m.content ?? '') })),
+      ],
+    }),
+  });
+  const d = await r.json();
+  if (!r.ok) throw { status: r.status, detay: d };
+  const metin = d.choices?.[0]?.message?.content?.trim() || '';
+  return { metin, model };
+}
+
 app.get('/api/ai/health', (_req, res) => {
-  res.json({ ok: true, yapilandirilmis: yapilandirilmis() });
+  res.json({ ok: true, yapilandirilmis: yapilandirilmis(), saglayici: 'openrouter' });
 });
 
 // --- Sohbet ---
 app.post('/api/ai/chat', async (req, res) => {
-  if (!yapilandirilmis()) return res.status(503).json({ hata: 'Anthropic API anahtarı tanımlı değil (.env).' });
+  if (!yapilandirilmis()) return res.status(503).json({ hata: 'OpenRouter API anahtarı tanımlı değil (.env).' });
   try {
     const { mesajlar = [], baglam = '' } = req.body || {};
-    const model = await modelSec();
-    const r = await fetch(`${API}/messages`, {
-      method: 'POST',
-      headers: HEADERS(),
-      body: JSON.stringify({
-        model,
-        max_tokens: 1500,
-        system: sistemPromptu(baglam),
-        messages: mesajlar.map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.icerik ?? m.content ?? '') })),
-      }),
-    });
-    const d = await r.json();
-    if (!r.ok) return res.status(r.status).json({ hata: 'Claude hatası', detay: d });
-    const metin = (d.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('\n').trim();
+    const { metin, model } = await claude(sistemPromptu(baglam), mesajlar, 1500);
     res.json({ cevap: metin, model });
   } catch (e) {
-    res.status(500).json({ hata: 'AI isteği başarısız', detay: String(e) });
+    res.status(e.status || 500).json({ hata: 'AI isteği başarısız', detay: e.detay || String(e) });
   }
 });
 
-// --- Proaktif analiz (panel açılınca AI'nın gözlemleri) ---
+// --- Proaktif analiz ---
 app.post('/api/ai/analiz', async (req, res) => {
-  if (!yapilandirilmis()) return res.status(503).json({ hata: 'Anthropic API anahtarı tanımlı değil (.env).' });
+  if (!yapilandirilmis()) return res.status(503).json({ hata: 'OpenRouter API anahtarı tanımlı değil (.env).' });
   try {
     const { baglam = '' } = req.body || {};
-    const model = await modelSec();
-    const r = await fetch(`${API}/messages`, {
-      method: 'POST',
-      headers: HEADERS(),
-      body: JSON.stringify({
-        model,
-        max_tokens: 900,
-        system: sistemPromptu(baglam),
-        messages: [{
-          role: 'user',
-          content: 'Panelin anlık durumuna bak ve bana EN ÖNEMLİ 3-5 gözlemini/uyarını madde madde, çok kısa söyle: neye dikkat etmeliyim, sıradaki adım ne, risk/gecikme/bütçe durumu. Sadece maddeler, giriş cümlesi yazma.',
-        }],
-      }),
-    });
-    const d = await r.json();
-    if (!r.ok) return res.status(r.status).json({ hata: 'Claude hatası', detay: d });
-    const metin = (d.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('\n').trim();
+    const { metin, model } = await claude(
+      sistemPromptu(baglam),
+      [{ role: 'user', icerik: 'Panelin anlık durumuna bak ve bana EN ÖNEMLİ 3-5 gözlemini/uyarını madde madde, çok kısa söyle: neye dikkat etmeliyim, sıradaki adım ne, risk/gecikme/bütçe/maliyet-düşürme durumu. Sadece maddeler, giriş cümlesi yazma.' }],
+      900,
+    );
     res.json({ analiz: metin, model });
   } catch (e) {
-    res.status(500).json({ hata: 'AI analizi başarısız', detay: String(e) });
+    res.status(e.status || 500).json({ hata: 'AI analizi başarısız', detay: e.detay || String(e) });
   }
 });
 
@@ -127,6 +124,6 @@ app.post('/api/ai/analiz', async (req, res) => {
 app.use(express.static(join(__dirname, '..', 'app', 'dist')));
 
 app.listen(PORT, () => {
-  console.log(`AI arka uç çalışıyor → http://localhost:${PORT}`);
-  console.log(`Anthropic anahtarı: ${yapilandirilmis() ? 'TANIMLI ✓' : 'EKSİK (.env doldur) ✗'}`);
+  console.log(`AI arka uç (OpenRouter) çalışıyor → http://localhost:${PORT}`);
+  console.log(`OpenRouter anahtarı: ${yapilandirilmis() ? 'TANIMLI ✓' : 'EKSİK (.env doldur) ✗'}`);
 });

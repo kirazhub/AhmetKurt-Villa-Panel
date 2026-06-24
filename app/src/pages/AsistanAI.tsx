@@ -112,7 +112,7 @@ export default function AsistanAI() {
     setYukleniyor(false);
   };
 
-  const headerSag = useMemo(() => <Badge tone="amber"><Sparkles size={13} />&nbsp;Claude Opus</Badge>, []);
+  const headerSag = useMemo(() => <Badge tone="amber"><Sparkles size={13} />&nbsp;Opus · OpenRouter</Badge>, []);
 
   // Anahtar yoksa kurulum ekranı
   if (hazir === false) {
@@ -129,9 +129,9 @@ export default function AsistanAI() {
               </div>
             </div>
             <ol className="list-decimal pl-5 space-y-1.5 text-sm text-metin">
-              <li><b>console.anthropic.com</b> adresine gir / kayıt ol.</li>
-              <li>Sol menü → <b>API Keys</b> → <b>Create Key</b>.</li>
-              <li>Çıkan anahtarı (<code>sk-ant-...</code>) kopyala ve <b>bana yapıştır</b> — gerisini ben hallederim.</li>
+              <li><b>openrouter.ai</b> adresine gir, Google/GitHub ile giriş yap.</li>
+              <li><b>openrouter.ai/keys</b> → <b>Create Key</b>.</li>
+              <li>Çıkan anahtarı (<code>sk-or-...</code>) kopyala ve <b>bana yapıştır</b> — gerisini ben hallederim.</li>
             </ol>
             <p className="text-xs text-metin-yum">Anahtar yalnızca senin sunucunda (.env) saklanır, tarayıcıya/internete açılmaz.</p>
             <Button variant="soft" size="sm" onClick={() => location.reload()}><RefreshCw size={15} /> Anahtarı ekledim, yenile</Button>
