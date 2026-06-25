@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Faz, Mahal, IsKalemi, Taseron, Teklif, Odeme, Belge, Proje } from '../types';
+import type { Faz, Mahal, IsKalemi, Taseron, Teklif, Odeme, Belge, Proje, SahaGunluk, Sarfiyat } from '../types';
 import { PROJE, FAZLAR, MAHALLER, IS_KALEMLERI } from '../data/seed';
 import { uid } from '../lib/format';
 
@@ -19,6 +19,9 @@ interface State {
   teklifler: Teklif[];
   odemeler: Odeme[];
   belgeler: Belge[];
+  sahaGunlukleri: SahaGunluk[];
+  sarfiyatlar: Sarfiyat[];
+  rehberBrifing: Record<string, string>; // rehber bölüm id -> AI brifing metni (önbellek)
 
   // İş kalemleri
   isKalemiEkle: (k: Omit<IsKalemi, 'id'>) => string;
@@ -46,9 +49,19 @@ interface State {
   belgeGuncelle: (id: string, patch: Partial<Belge>) => void;
   belgeSil: (id: string) => void;
 
+  // Saha takibi
+  sahaEkle: (g: Omit<SahaGunluk, 'id'>) => string;
+  sahaGuncelle: (id: string, patch: Partial<SahaGunluk>) => void;
+  sahaSil: (id: string) => void;
+  sarfiyatEkle: (s: Omit<Sarfiyat, 'id'>) => string;
+  sarfiyatGuncelle: (id: string, patch: Partial<Sarfiyat>) => void;
+  sarfiyatSil: (id: string) => void;
+
+  // Rehber AI brifing önbelleği
+  rehberBrifingKaydet: (id: string, metin: string) => void;
+
   // Proje künyesi
   projeGuncelle: (patch: Partial<Proje>) => void;
-
   // Bakım
   sifirla: () => void; // her şeyi seed'e döndürür
   disaAktar: () => string; // JSON yedek
@@ -66,6 +79,9 @@ export const useStore = create<State>()(
       teklifler: [],
       odemeler: [],
       belgeler: [],
+      sahaGunlukleri: [],
+      sarfiyatlar: [],
+      rehberBrifing: {},
 
       isKalemiEkle: (k) => {
         const id = uid('ik');
@@ -129,17 +145,47 @@ export const useStore = create<State>()(
       belgeSil: (id) =>
         set((s) => ({ belgeler: s.belgeler.filter((x) => x.id !== id) })),
 
-      projeGuncelle: (patch) => set((s) => ({ proje: { ...s.proje, ...patch } })),
+      sahaEkle: (g) => {
+        const id = uid('sg');
+        set((s) => ({ sahaGunlukleri: [...s.sahaGunlukleri, { ...g, id }] }));
+        return id;
+      },
+      sahaGuncelle: (id, patch) =>
+        set((s) => ({ sahaGunlukleri: s.sahaGunlukleri.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
+      sahaSil: (id) =>
+        set((s) => ({ sahaGunlukleri: s.sahaGunlukleri.filter((x) => x.id !== id) })),
 
+      sarfiyatEkle: (sf) => {
+        const id = uid('sf');
+        const tutar = sf.miktar && sf.birimFiyat ? sf.miktar * sf.birimFiyat : sf.tutar;
+        set((s) => ({ sarfiyatlar: [...s.sarfiyatlar, { ...sf, tutar, id }] }));
+        return id;
+      },
+      sarfiyatGuncelle: (id, patch) =>
+        set((s) => ({
+          sarfiyatlar: s.sarfiyatlar.map((x) => {
+            if (x.id !== id) return x;
+            const y = { ...x, ...patch };
+            if (y.miktar && y.birimFiyat) y.tutar = y.miktar * y.birimFiyat;
+            return y;
+          }),
+        })),
+      sarfiyatSil: (id) =>
+        set((s) => ({ sarfiyatlar: s.sarfiyatlar.filter((x) => x.id !== id) })),
+
+      rehberBrifingKaydet: (id, metin) =>
+        set((s) => ({ rehberBrifing: { ...s.rehberBrifing, [id]: metin } })),
+
+      projeGuncelle: (patch) => set((s) => ({ proje: { ...s.proje, ...patch } })),
       sifirla: () =>
         set({
           proje: PROJE, fazlar: FAZLAR, mahaller: MAHALLER, isKalemleri: IS_KALEMLERI,
-          taseronlar: [], teklifler: [], odemeler: [], belgeler: [],
+          taseronlar: [], teklifler: [], odemeler: [], belgeler: [], sahaGunlukleri: [], sarfiyatlar: [], rehberBrifing: {},
         }),
 
       disaAktar: () => {
-        const { proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler } = get();
-        return JSON.stringify({ proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler }, null, 2);
+        const { proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler, sahaGunlukleri, sarfiyatlar } = get();
+        return JSON.stringify({ proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler, sahaGunlukleri, sarfiyatlar }, null, 2);
       },
       iceAktar: (json) => {
         try {
@@ -153,6 +199,8 @@ export const useStore = create<State>()(
             teklifler: d.teklifler ?? [],
             odemeler: d.odemeler ?? [],
             belgeler: d.belgeler ?? [],
+            sahaGunlukleri: d.sahaGunlukleri ?? [],
+            sarfiyatlar: d.sarfiyatlar ?? [],
           });
           return true;
         } catch {

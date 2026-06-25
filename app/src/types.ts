@@ -151,3 +151,34 @@ export const TASERON_KATEGORILERI = [
   'Peyzaj / Çevre',
   'Nakliye / Genel',
 ] as const;
+
+// ============================================================================
+// SAHA TAKİBİ — Günlük saha kaydı ve malzeme sarfiyatı (AI maliyet raporları için)
+// ============================================================================
+
+/** Bir günün saha özeti: kaç kamyon geldi, kaç işçi çalıştı, hava vb. */
+export interface SahaGunluk {
+  id: string;
+  tarih: string;          // ISO (YYYY-MM-DD)
+  kamyon?: number;        // gelen kamyon sayısı
+  isci?: number;          // çalışan işçi sayısı
+  calismaSaati?: number;  // o gün çalışılan saat
+  hava?: string;          // 'güneşli' | 'yağmurlu' | 'karlı' ...
+  fazId?: string;
+  notlar?: string;
+}
+
+/** Malzeme sarfiyatı / gelen mal: çelik, beton, tuğla, çimento vb. */
+export interface Sarfiyat {
+  id: string;
+  tarih: string;          // ISO
+  malzeme: string;        // 'İnşaat demiri', 'Hazır beton', 'Tuğla' ...
+  miktar: number;
+  birim: Birim;
+  birimFiyat?: number;    // TL
+  tutar?: number;         // miktar * birimFiyat (otomatik hesaplanır)
+  tedarikci?: string;
+  fazId?: string;
+  isKalemiId?: string;
+  notlar?: string;
+}

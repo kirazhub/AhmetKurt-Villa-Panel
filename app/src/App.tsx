@@ -10,6 +10,8 @@ import Belgeler from './pages/Belgeler';
 import Takvim from './pages/Takvim';
 import Rehber from './pages/Rehber';
 import AsistanAI from './pages/AsistanAI';
+import Raporlar from './pages/Raporlar';
+import SahaKaydi from './pages/SahaKaydi';
 import Proje from './pages/Proje';
 
 export default function App() {
@@ -19,7 +21,9 @@ export default function App() {
         <Route path="/" element={<Ozet />} />
         <Route path="/rehber" element={<Rehber />} />
         <Route path="/asistan" element={<AsistanAI />} />
+        <Route path="/raporlar" element={<Raporlar />} />
         <Route path="/is-takibi" element={<IsTakibi />} />
+        <Route path="/saha-kaydi" element={<SahaKaydi />} />
         <Route path="/taseronlar" element={<Taseronlar />} />
         <Route path="/butce" element={<Butce />} />
         <Route path="/odemeler" element={<Odemeler />} />

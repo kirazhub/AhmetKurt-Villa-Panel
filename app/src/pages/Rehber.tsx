@@ -3,8 +3,10 @@ import {
   BookOpenText, Search, ListChecks, AlertTriangle, FileText, Wallet, XCircle, Lightbulb,
   Compass, Stamp, FileSignature, Rocket, Mountain, Layers, Building, Home, Blocks, Cable,
   PaintRoller, DoorOpen, Bath, Gem, Plug, CookingPot, Waves, Trees, BadgeCheck, Sparkles,
+  Loader2, MessageCircleQuestion, RefreshCw,
 } from 'lucide-react';
-import { PageHeader, Card, CardBody, Badge, Input } from '../components/ui';
+import { PageHeader, Card, CardBody, Badge, Input, Button } from '../components/ui';
+import { useStore } from '../store/useStore';
 import { REHBER_GENEL, REHBER_FAZLAR, type RehberBolum } from '../data/rehber';
 
 const IKONLAR: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
@@ -12,6 +14,30 @@ const IKONLAR: Record<string, React.ComponentType<{ size?: number; className?: s
   Cable, PaintRoller, DoorOpen, Bath, Gem, Plug, CookingPot, Waves, Trees, BadgeCheck,
 };
 const ikonGetir = (ad?: string) => (ad && IKONLAR[ad]) || BookOpenText;
+
+// AI brifing istek metni — İstanbul piyasası + sıralı sorular + beklenen cevaplar
+const BRIFING_PROMPT = (baslik: string) =>
+`"${baslik}" konusu için bana İSTANBUL PİYASASINA göre, acemiye uygun, detaylı bir brifing yaz. Tam olarak şu 3 başlıkta olsun:
+
+**1) BİLGİ METNİ:** Bu konuda nelere dikkat etmeliyim; hangi anlaşmaları yapmalı, hangi izin/evrakları almalıyım; İstanbul'da yaklaşık maliyet/piyasa mantığı nasıldır; alınması gereken önlemler neler; ve benim aklıma gelmeyecek, bilmediğim ama bilmem gereken önemli noktalar neler. Akıcı paragraflar.
+
+**2) SORMAM GEREKEN SORULAR:** İşi yapacak kişiye/taşerona/ustaya/yetkiliye sormam gereken soruları 1, 2, 3, 4, 5... diye NUMARALI, alt alta yaz.
+
+**3) ALMAM GEREKEN CEVAPLAR:** Yukarıdaki her soru için iyi/doğru cevabın ne olması gerektiğini, kandırılmamam için yine 1, 2, 3... NUMARALI yaz.
+
+Türkçe ve net ol. Uydurma kesin rakam verme; piyasa aralığı/mantığı ver.`;
+
+// Basit metin biçimleyici (kalın + satır)
+function MetinGoster({ metin }: { metin: string }) {
+  return (
+    <div className="text-[15px] leading-relaxed whitespace-pre-wrap text-metin">
+      {metin.split('\n').map((satir, i) => {
+        const p = satir.split(/(\*\*[^*]+\*\*)/g);
+        return <div key={i}>{p.map((x, j) => x.startsWith('**') && x.endsWith('**') ? <strong key={j}>{x.slice(2, -2)}</strong> : <span key={j}>{x}</span>)}</div>;
+      })}
+    </div>
+  );
+}
 
 function Blok({ baslik, ikon, tone, maddeler, sirali }: {
   baslik: string; ikon: React.ReactNode; tone: string; maddeler?: string[]; sirali?: boolean;
@@ -39,6 +65,25 @@ export default function Rehber() {
 
   const tumu = useMemo(() => [...REHBER_GENEL, ...REHBER_FAZLAR], []);
   const aktif: RehberBolum = tumu.find((b) => b.id === aktifId) ?? tumu[0];
+
+  const rehberBrifing = useStore((s) => s.rehberBrifing);
+  const brifingKaydet = useStore((s) => s.rehberBrifingKaydet);
+  const [brifingYukleniyor, setBrifingYukleniyor] = useState(false);
+  const brifing = rehberBrifing[aktif.id];
+
+  const brifingUret = async () => {
+    setBrifingYukleniyor(true);
+    try {
+      const r = await fetch('/api/ai/chat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ baglam: `Konu: ${aktif.baslik}`, mesajlar: [{ role: 'user', icerik: BRIFING_PROMPT(aktif.baslik) }] }),
+      });
+      const d = await r.json();
+      if (r.ok && d.cevap) brifingKaydet(aktif.id, d.cevap);
+      else brifingKaydet(aktif.id, `Brifing alınamadı: ${d.hata || 'AI bağlantısı yok. AI Asistan sayfasından kurulumu kontrol et.'}`);
+    } catch { brifingKaydet(aktif.id, 'Bağlanılamadı. AI sunucusu çalışıyor mu?'); }
+    setBrifingYukleniyor(false);
+  };
 
   const ara = (liste: RehberBolum[]) =>
     arama.trim()
@@ -119,9 +164,36 @@ export default function Rehber() {
             <Blok baslik="Sık Yapılan Hatalar" ikon={<XCircle size={16} className="text-red-600" />} tone="border-red-100 bg-red-50/60 text-red-900" maddeler={aktif.hatalar} />
             <Blok baslik="Püf Noktaları" ikon={<Lightbulb size={16} className="text-amber-500" />} tone="border-amber-100 bg-amber-50/50 text-amber-900" maddeler={aktif.ipuclari} />
 
+            {/* Canlı AI brifingi — İstanbul piyasası + sorulacak sorular + beklenen cevaplar */}
+            <div className="rounded-xl border-2 border-dashed border-marka-200 bg-marka-50/40 p-4">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <p className="flex items-center gap-2 font-semibold text-sm text-marka-800">
+                  <MessageCircleQuestion size={17} /> İstanbul Piyasası Brifingi + Sorulacak Sorular
+                </p>
+                {brifing && !brifingYukleniyor && (
+                  <Button variant="ghost" size="sm" onClick={brifingUret}><RefreshCw size={14} /> Yenile</Button>
+                )}
+              </div>
+
+              {!brifing && !brifingYukleniyor && (
+                <>
+                  <p className="text-sm text-metin-yum mb-3">
+                    Bu konuda yapay zekâdan İstanbul piyasasına göre detaylı bir brifing iste: dikkat edilecekler, anlaşmalar, izinler, maliyet mantığı, önlemler ve <b>işi yapacak kişiye sorman gereken sorular + almanız gereken cevaplar</b> (numaralı).
+                  </p>
+                  <Button onClick={brifingUret}><Sparkles size={15} /> AI'dan detaylı brifing iste</Button>
+                </>
+              )}
+              {brifingYukleniyor && (
+                <p className="text-sm text-marka-800 flex items-center gap-2 py-2"><Loader2 size={15} className="animate-spin" /> AI İstanbul piyasasına göre brifing hazırlıyor…</p>
+              )}
+              {brifing && !brifingYukleniyor && (
+                <div className="rounded-lg bg-white border border-marka-100 p-4 mt-1"><MetinGoster metin={brifing} /></div>
+              )}
+            </div>
+
             <div className="pt-2 border-t border-cizgi flex items-center gap-2 text-xs text-metin-yum">
               <Sparkles size={13} className="text-marka-500" />
-              Bu rehber yapay zekâ tarafından hazırlandı. Canlı soru-cevap asistanı bir sonraki aşamada eklenecek.
+              Statik rehber + canlı AI brifingi birlikte çalışır. Brifing bir kez üretilince saklanır; "Yenile" ile güncelleyebilirsin.
             </div>
           </CardBody>
         </Card>
