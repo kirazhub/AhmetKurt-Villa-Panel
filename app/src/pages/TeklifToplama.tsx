@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Sparkles, Loader2, KeyRound, CheckCircle2, UserCog, Inbox, ChevronDown, ChevronUp, Printer, Image as ImageIcon, Building } from 'lucide-react';
+import { Sparkles, Loader2, KeyRound, CheckCircle2, UserCog, Inbox, ChevronDown, ChevronUp, Printer, Image as ImageIcon, Building, MessageCircle, Send } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { PageHeader, Card, CardBody, Button, Badge, Field, Input, Select, Textarea } from '../components/ui';
 import { blobGetir } from '../lib/idb';
@@ -20,7 +21,7 @@ const STANDART_SORULAR = `1. Fiyatı nasıl veriyorsunuz (m³ / saat / götürü
 8. Ödeme koşullarınız ve iş güvenliği / sigorta durumunuz nedir?`;
 
 interface Bulunan { ad: string; email?: string; telefon?: string; web?: string; sehir?: string; }
-interface Sonuc { bulunan: Bulunan[]; toplamTaranan: number; emailliSayi: number; gonderilen: number; konu: string; govde: string; mailHazir: boolean; }
+interface Sonuc { bulunan: Bulunan[]; toplamTaranan: number; emailliSayi: number; telefonluSayi: number; gonderilen: number; konu: string; govde: string; waMesaj: string; mailHazir: boolean; }
 
 export default function TeklifToplama() {
   const { belgeler, gonderenProfil, gonderenProfilGuncelle, firmaEkle, rfqEkle, rfqKayitlari } = useStore();
@@ -37,6 +38,20 @@ export default function TeklifToplama() {
   const [calisiyor, setCalisiyor] = useState(false);
   const [sonuc, setSonuc] = useState<Sonuc | null>(null);
   const [mailAcik, setMailAcik] = useState(false);
+  const [waMesaj, setWaMesaj] = useState('');
+  const [waBagli, setWaBagli] = useState(false);
+  const [waGonderilen, setWaGonderilen] = useState<Record<string, 'ok' | 'hata' | 'gonderiliyor'>>({});
+
+  useEffect(() => { fetch('/api/wa/durum').then((r) => r.json()).then((d) => setWaBagli(!!d.baglandi)).catch(() => {}); }, []);
+
+  const waGonder = async (f: Bulunan) => {
+    if (!f.telefon) return;
+    setWaGonderilen((s) => ({ ...s, [f.telefon!]: 'gonderiliyor' }));
+    try {
+      const r = await fetch('/api/wa/gonder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ numara: f.telefon, mesaj: waMesaj }) });
+      setWaGonderilen((s) => ({ ...s, [f.telefon!]: r.ok ? 'ok' : 'hata' }));
+    } catch { setWaGonderilen((s) => ({ ...s, [f.telefon!]: 'hata' })); }
+  };
 
   // Gelen kutusu
   const [gelenler, setGelenler] = useState<{ from: string; subject: string; date: string; text: string; ozet: string }[]>([]);
@@ -85,6 +100,7 @@ export default function TeklifToplama() {
       const d = await r.json();
       if (!r.ok) { alert('Hata: ' + (d.hata || '')); setCalisiyor(false); return; }
       setSonuc(d);
+      setWaMesaj(d.waMesaj || '');
       // kayıt: bulunan firmaları + rfq
       (d.bulunan || []).forEach((f: Bulunan) => { if (f.ad && f.email) firmaEkle({ ad: f.ad, email: f.email, kategori, telefon: f.telefon, sehir: f.sehir, kaynak: 'ai' }); });
       if (d.gonderilen > 0) rfqEkle({ tarih: bugun(), konu: d.konu, govde: d.govde, kategori, alicilar: (d.bulunan || []).map((f: Bulunan) => f.email!).filter(Boolean), ekSayisi: ekler.length, durum: 'gonderildi' });
@@ -174,21 +190,45 @@ export default function TeklifToplama() {
       {/* Sonuç */}
       {sonuc && (
         <Card className="mb-6"><CardBody>
-          <div className="flex flex-wrap items-center gap-2 mb-3">
+          <div className="flex flex-wrap items-center gap-2 mb-4">
             <Badge tone="mavi">{sonuc.toplamTaranan} firma tarandı</Badge>
-            <Badge tone="amber">{sonuc.emailliSayi} e-postalı firma</Badge>
-            <Badge tone={sonuc.gonderilen > 0 ? 'yesil' : 'kirmizi'}>{sonuc.gonderilen} firmaya gönderildi</Badge>
+            <Badge tone="amber">{sonuc.emailliSayi} e-postalı</Badge>
+            <Badge tone="mavi">{sonuc.telefonluSayi} telefonlu</Badge>
+            <Badge tone={sonuc.gonderilen > 0 ? 'yesil' : 'gri'}>{sonuc.gonderilen} firmaya mail gönderildi</Badge>
           </div>
-          {sonuc.bulunan.length > 0 ? (
-            <div className="space-y-1 mb-3">
-              {sonuc.bulunan.map((f, i) => (
-                <div key={i} className="text-sm flex items-center gap-2 flex-wrap"><Building size={13} className="text-metin-yum" /><b>{f.ad}</b> · <span className="text-marka-700">{f.email}</span>{f.telefon && <span className="text-metin-yum">· {f.telefon}</span>}</div>
-              ))}
-            </div>
-          ) : <p className="text-sm text-metin-yum mb-3">Bu kategoride e-postalı firma bulunamadı (bu iş kolu telefonla çalışıyor olabilir). Farklı kategori/bölge dene.</p>}
 
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setMailAcik((v) => !v)}>{mailAcik ? <ChevronUp size={15} /> : <ChevronDown size={15} />} Gönderilen maili gör</Button>
+          {/* WhatsApp kısa mesaj */}
+          <div className="mb-4">
+            <p className="text-sm font-medium text-metin mb-1.5 flex items-center gap-1.5"><MessageCircle size={15} className="text-emerald-600" /> WhatsApp mesajı (kısa, fiyat odaklı — düzenleyebilirsin)</p>
+            <Textarea value={waMesaj} onChange={(e) => setWaMesaj(e.target.value)} className="min-h-[90px] text-sm" />
+            {!waBagli && <p className="text-xs text-marka-700 mt-1">WhatsApp bağlı değil — <Link to="/whatsapp" className="underline">WhatsApp sayfasından bağla</Link>, sonra firmalara tek tıkla gönder.</p>}
+          </div>
+
+          {sonuc.bulunan.length > 0 ? (
+            <div className="space-y-1.5 mb-3">
+              {sonuc.bulunan.map((f, i) => {
+                const durum = f.telefon ? waGonderilen[f.telefon] : undefined;
+                return (
+                  <div key={i} className="flex items-center justify-between gap-2 flex-wrap border-b border-cizgi/60 py-1.5">
+                    <div className="text-sm min-w-0">
+                      <span className="inline-flex items-center gap-1"><Building size={13} className="text-metin-yum" /> <b>{f.ad}</b></span>
+                      {f.email && <span className="text-marka-700"> · {f.email} {sonuc.gonderilen > 0 && <Badge tone="yesil">mail ✓</Badge>}</span>}
+                      {f.telefon && <span className="text-metin-yum"> · 📞 {f.telefon}</span>}
+                    </div>
+                    {f.telefon && (
+                      <Button size="sm" variant={durum === 'ok' ? 'ghost' : 'soft'} disabled={!waBagli || durum === 'gonderiliyor' || durum === 'ok'} onClick={() => waGonder(f)}>
+                        {durum === 'gonderiliyor' ? <Loader2 size={13} className="animate-spin" /> : durum === 'ok' ? <CheckCircle2 size={13} className="text-emerald-600" /> : <Send size={13} />}
+                        {durum === 'ok' ? 'Gönderildi' : durum === 'hata' ? 'Tekrar dene' : 'WhatsApp'}
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : <p className="text-sm text-metin-yum mb-3">Bu kategoride e-posta/telefonu olan firma bulunamadı. Farklı kategori/bölge dene.</p>}
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="ghost" size="sm" onClick={() => setMailAcik((v) => !v)}>{mailAcik ? <ChevronUp size={15} /> : <ChevronDown size={15} />} Gönderilen e-mailı gör</Button>
             <Button variant="soft" size="sm" onClick={yazdir}><Printer size={15} /> PDF / Yazdır</Button>
           </div>
           {mailAcik && <div className="mt-2 rounded-xl bg-zemin border border-cizgi p-4 text-sm whitespace-pre-wrap">{sonuc.govde}</div>}
