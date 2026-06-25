@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Sparkles, Loader2, KeyRound, CheckCircle2, UserCog, Inbox, ChevronDown, ChevronUp, Printer, Image as ImageIcon, Building, MessageCircle, Send } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Sparkles, Loader2, KeyRound, CheckCircle2, UserCog, Inbox, ChevronDown, ChevronUp, Printer, Image as ImageIcon, Building, Mail, Phone, Wand2 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { PageHeader, Card, CardBody, Button, Badge, Field, Input, Select, Textarea } from '../components/ui';
 import { blobGetir } from '../lib/idb';
@@ -11,47 +10,25 @@ function blobToB64(blob: Blob): Promise<string> {
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = rej; r.readAsDataURL(blob); });
 }
 
-const STANDART_SORULAR = `1. Fiyatı nasıl veriyorsunuz (m³ / saat / götürü)? Birim fiyatınız, KDV dahil mi?
-2. Makine (kepçe/ekskavatör) saat ücreti ve kepçe başına fiyatınız nedir?
-3. Kaç kişilik ekiple ve aynı anda kaç makineyle çalışırsınız?
-4. Bu işi en hızlı ne kadar sürede bitirirsiniz?
-5. Hafriyat dışında temel betonu, demir/çelik ve izolasyon işlerini de siz mi yaparsınız, yoksa ayrı firmalarla mı çalışmamız gerekir?
-6. Benzer (eğimli arazi / villa temeli) referans işiniz var mı?
-7. Ne zaman başlayabilirsiniz?
-8. Ödeme koşullarınız ve iş güvenliği / sigorta durumunuz nedir?`;
-
 interface Bulunan { ad: string; email?: string; telefon?: string; web?: string; sehir?: string; }
-interface Sonuc { bulunan: Bulunan[]; toplamTaranan: number; emailliSayi: number; telefonluSayi: number; gonderilen: number; konu: string; govde: string; waMesaj: string; mailHazir: boolean; }
+interface Sonuc { bulunan: Bulunan[]; toplamTaranan: number; emailliSayi: number; telefonluSayi: number; gonderilen: number; konu: string; govde: string; mailHazir: boolean; }
 
 export default function TeklifToplama() {
-  const { belgeler, gonderenProfil, gonderenProfilGuncelle, firmaEkle, rfqEkle, rfqKayitlari } = useStore();
+  const { belgeler, proje, gonderenProfil, gonderenProfilGuncelle, firmaEkle, rfqEkle, rfqKayitlari } = useStore();
   const [mailHazir, setMailHazir] = useState<boolean | null>(null);
   const [mailAdres, setMailAdres] = useState('');
   const [profilAcik, setProfilAcik] = useState(false);
 
   const [kategori, setKategori] = useState('Hafriyat / Kazı');
   const [bolge, setBolge] = useState('İstanbul Avrupa Yakası / Arnavutköy');
-  const [sorular, setSorular] = useState(STANDART_SORULAR);
+  const [kabaNot, setKabaNot] = useState('');
+  const [sorular, setSorular] = useState('');
   const [secilenEkler, setSecilenEkler] = useState<Record<string, boolean>>({});
   const [thumb, setThumb] = useState<Record<string, string>>({});
 
   const [calisiyor, setCalisiyor] = useState(false);
   const [sonuc, setSonuc] = useState<Sonuc | null>(null);
   const [mailAcik, setMailAcik] = useState(false);
-  const [waMesaj, setWaMesaj] = useState('');
-  const [waBagli, setWaBagli] = useState(false);
-  const [waGonderilen, setWaGonderilen] = useState<Record<string, 'ok' | 'hata' | 'gonderiliyor'>>({});
-
-  useEffect(() => { fetch('/api/wa/durum').then((r) => r.json()).then((d) => setWaBagli(!!d.baglandi)).catch(() => {}); }, []);
-
-  const waGonder = async (f: Bulunan) => {
-    if (!f.telefon) return;
-    setWaGonderilen((s) => ({ ...s, [f.telefon!]: 'gonderiliyor' }));
-    try {
-      const r = await fetch('/api/wa/gonder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ numara: f.telefon, mesaj: waMesaj }) });
-      setWaGonderilen((s) => ({ ...s, [f.telefon!]: r.ok ? 'ok' : 'hata' }));
-    } catch { setWaGonderilen((s) => ({ ...s, [f.telefon!]: 'hata' })); }
-  };
 
   // Gelen kutusu
   const [gelenler, setGelenler] = useState<{ from: string; subject: string; date: string; text: string; ozet: string }[]>([]);
@@ -59,12 +36,13 @@ export default function TeklifToplama() {
   const [acikMail, setAcikMail] = useState<Record<number, boolean>>({});
 
   const fotolar = useMemo(() => belgeler.filter((b) => b.tur === 'foto' && b.blobId), [belgeler]);
+  const specliSayi = useMemo(() => belgeler.filter((b) => b.spec).length, [belgeler]);
 
   useEffect(() => {
     fetch('/api/mail/health').then((r) => r.json()).then((d) => { setMailHazir(!!d.yapilandirilmis); setMailAdres(d.adres || ''); }).catch(() => setMailHazir(false));
   }, []);
 
-  // Foto küçük resimlerini yükle
+  // Foto küçük resimleri
   useEffect(() => {
     let iptal = false; const olusan: string[] = [];
     (async () => {
@@ -80,30 +58,27 @@ export default function TeklifToplama() {
   }, [fotolar.length]);
 
   const imzaMetni = () => `${gonderenProfil.ad}\n${gonderenProfil.unvan}${gonderenProfil.telefon ? '\nTel: ' + gonderenProfil.telefon : ''}\ninsaat@pokkop.com`;
+  const speclerTopla = () => belgeler.filter((b) => b.spec).map((b) => `### ${b.ad}\n${b.spec}`).join('\n\n');
 
   const otomatikGonder = async () => {
     if (!mailHazir) { alert('Mail hesabı bağlı değil; gönderim yapılamaz.'); return; }
-    if (!confirm(`"${kategori}" için ${bolge} bölgesinde e-postası olan firmalar bulunup OTOMATİK teklif maili gönderilecek. Onaylıyor musun?`)) return;
+    if (!confirm(`"${kategori}" için ${bolge} bölgesinde e-POSTASI olan profesyonel firmalar bulunup detaylı teklif maili gönderilecek. Onaylıyor musun?`)) return;
     setCalisiyor(true); setSonuc(null);
     try {
-      // seçili görselleri base64 topla
       const ekler: { ad: string; base64: string }[] = [];
       for (const b of fotolar.filter((x) => secilenEkler[x.id])) {
         const blob = await blobGetir(b.blobId!);
         if (blob) ekler.push({ ad: b.ad, base64: await blobToB64(blob) });
       }
-      const projeNot = kategori.includes('Hafriyat') ? 'İş: ~350-360 m² tabanda ~50 cm derinlikte temel hafriyatı; üzerine grobeton+hasır çelik+izolasyon gelecek, kolon filizleri bırakılacak. ÇIKAN HAFRİYAT ARSA İÇİNDE KALACAK, kamyonla taşınmayacak (nakliye yok).' : '';
       const r = await fetch('/api/teklif-otomatik', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kategori, bolge, sorular, imza: imzaMetni(), ekler, projeNot }),
+        body: JSON.stringify({ kategori, bolge, sorular, imza: imzaMetni(), ekler, kabaNot, proje: JSON.stringify(proje), specler: speclerTopla() }),
       });
       const d = await r.json();
       if (!r.ok) { alert('Hata: ' + (d.hata || '')); setCalisiyor(false); return; }
       setSonuc(d);
-      setWaMesaj(d.waMesaj || '');
-      // kayıt: bulunan firmaları + rfq
       (d.bulunan || []).forEach((f: Bulunan) => { if (f.ad && f.email) firmaEkle({ ad: f.ad, email: f.email, kategori, telefon: f.telefon, sehir: f.sehir, kaynak: 'ai' }); });
-      if (d.gonderilen > 0) rfqEkle({ tarih: bugun(), konu: d.konu, govde: d.govde, kategori, alicilar: (d.bulunan || []).map((f: Bulunan) => f.email!).filter(Boolean), ekSayisi: ekler.length, durum: 'gonderildi' });
+      if (d.gonderilen > 0) rfqEkle({ tarih: bugun(), konu: d.konu, govde: d.govde, kategori, alicilar: (d.bulunan || []).filter((f: Bulunan) => f.email).map((f: Bulunan) => f.email!), ekSayisi: ekler.length, durum: 'gonderildi' });
     } catch { alert('Bağlantı hatası.'); }
     setCalisiyor(false);
   };
@@ -125,8 +100,8 @@ export default function TeklifToplama() {
   return (
     <>
       <PageHeader
-        baslik="Teklif Toplama"
-        aciklama="Konuyu seç — Opus bölgendeki e-postalı firmaları bulup teklif mailini otomatik gönderir"
+        baslik="Teklif Toplama (E-posta)"
+        aciklama="Sen işi kısaca anlat — AI profesyonel firmalara bina detaylı, ölçü ve malzeme bilgili teklif maili yazıp gönderir"
         sag={<Button variant="ghost" size="sm" onClick={() => setProfilAcik((v) => !v)}><UserCog size={15} /> İmza</Button>}
       />
 
@@ -149,16 +124,22 @@ export default function TeklifToplama() {
         </CardBody></Card>
       )}
 
-      {/* Tek ekran: konu + ekler + otomatik gönder */}
       <Card className="mb-6"><CardBody className="space-y-4">
         <div className="grid sm:grid-cols-2 gap-4">
           <Field label="Hangi konuda teklif?"><Select value={kategori} onChange={(e) => setKategori(e.target.value)}>{TASERON_KATEGORILERI.map((k) => <option key={k} value={k}>{k}</option>)}</Select></Field>
           <Field label="Bölge"><Input value={bolge} onChange={(e) => setBolge(e.target.value)} /></Field>
         </div>
 
-        <Field label="Sorulacak sorular (AI maile ekler)"><Textarea value={sorular} onChange={(e) => setSorular(e.target.value)} className="min-h-[120px] text-xs" /></Field>
+        {/* Kısaca anlat → AI detaylandırır */}
+        <div className="rounded-xl bg-marka-50/60 border border-marka-100 p-3 space-y-1.5">
+          <p className="text-sm font-medium text-metin flex items-center gap-1.5"><Wand2 size={15} className="text-marka-500" /> İşi kısaca anlat — AI profesyonel ve detaylı maile çevirir</p>
+          <Textarea value={kabaNot} onChange={(e) => setKabaNot(e.target.value)} placeholder={`Örn: ${kategori.includes('Hafriyat') ? 'Temel hafriyatı lazım, ~350 m² tabanda yarım metre derinlik, çıkan toprak arsada kalacak, nakliye yok. Fiyat, süre, ne zaman başlanır öğrenmek istiyorum.' : 'Ne yaptırmak istediğini kendi cümlelerinle yaz; AI ölçüleri, malzeme ve proje detaylarını ekleyip profesyonel bir teklif mektubu kurar.'}`} className="min-h-[100px] text-sm bg-white" />
+          <p className="text-xs text-metin-yum">AI; proje künyesini ve {specliSayi > 0 ? `${specliSayi} belgeden çıkardığı teknik ölçü/m²/malzeme bilgisini` : 'proje bilgilerini'} kullanarak maili kendisi zenginleştirir, eksik detayları firmadan ister.</p>
+        </div>
 
-        {/* Görsel ekler — imaj olarak */}
+        <Field label="Eklemek istediğin özel sorular (opsiyonel)"><Textarea value={sorular} onChange={(e) => setSorular(e.target.value)} placeholder="Boş bırakabilirsin — AI zaten fiyat, malzeme, süre, referans, ödeme, garanti gibi tüm kritik soruları sorar." className="min-h-[70px] text-xs" /></Field>
+
+        {/* Görsel ekler */}
         <div>
           <p className="text-sm font-medium text-metin mb-2 flex items-center gap-1.5"><ImageIcon size={15} /> Eklenecek görseller (tıkla-seç)</p>
           {fotolar.length === 0 ? (
@@ -181,9 +162,9 @@ export default function TeklifToplama() {
 
         <div className="pt-1">
           <Button onClick={otomatikGonder} disabled={calisiyor || !mailHazir} size="md">
-            {calisiyor ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />} AI ile firma bul ve otomatik gönder
+            {calisiyor ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />} AI ile profesyonel firma bul ve detaylı mail gönder
           </Button>
-          {calisiyor && <p className="text-sm text-metin-yum mt-2 flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Firmalar araştırılıyor, mail yazılıyor ve gönderiliyor… (1-2 dk sürebilir)</p>}
+          {calisiyor && <p className="text-sm text-metin-yum mt-2 flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> E-postalı profesyonel firmalar bulunuyor, detaylı mail yazılıyor ve gönderiliyor… (1-2 dk)</p>}
         </div>
       </CardBody></Card>
 
@@ -192,40 +173,24 @@ export default function TeklifToplama() {
         <Card className="mb-6"><CardBody>
           <div className="flex flex-wrap items-center gap-2 mb-4">
             <Badge tone="mavi">{sonuc.toplamTaranan} firma tarandı</Badge>
-            <Badge tone="amber">{sonuc.emailliSayi} e-postalı</Badge>
-            <Badge tone="mavi">{sonuc.telefonluSayi} telefonlu</Badge>
+            <Badge tone="amber">{sonuc.emailliSayi} e-postalı (profesyonel)</Badge>
             <Badge tone={sonuc.gonderilen > 0 ? 'yesil' : 'gri'}>{sonuc.gonderilen} firmaya mail gönderildi</Badge>
-          </div>
-
-          {/* WhatsApp kısa mesaj */}
-          <div className="mb-4">
-            <p className="text-sm font-medium text-metin mb-1.5 flex items-center gap-1.5"><MessageCircle size={15} className="text-emerald-600" /> WhatsApp mesajı (kısa, fiyat odaklı — düzenleyebilirsin)</p>
-            <Textarea value={waMesaj} onChange={(e) => setWaMesaj(e.target.value)} className="min-h-[90px] text-sm" />
-            {!waBagli && <p className="text-xs text-marka-700 mt-1">WhatsApp bağlı değil — <Link to="/whatsapp" className="underline">WhatsApp sayfasından bağla</Link>, sonra firmalara tek tıkla gönder.</p>}
           </div>
 
           {sonuc.bulunan.length > 0 ? (
             <div className="space-y-1.5 mb-3">
-              {sonuc.bulunan.map((f, i) => {
-                const durum = f.telefon ? waGonderilen[f.telefon] : undefined;
-                return (
-                  <div key={i} className="flex items-center justify-between gap-2 flex-wrap border-b border-cizgi/60 py-1.5">
-                    <div className="text-sm min-w-0">
-                      <span className="inline-flex items-center gap-1"><Building size={13} className="text-metin-yum" /> <b>{f.ad}</b></span>
-                      {f.email && <span className="text-marka-700"> · {f.email} {sonuc.gonderilen > 0 && <Badge tone="yesil">mail ✓</Badge>}</span>}
-                      {f.telefon && <span className="text-metin-yum"> · 📞 {f.telefon}</span>}
-                    </div>
-                    {f.telefon && (
-                      <Button size="sm" variant={durum === 'ok' ? 'ghost' : 'soft'} disabled={!waBagli || durum === 'gonderiliyor' || durum === 'ok'} onClick={() => waGonder(f)}>
-                        {durum === 'gonderiliyor' ? <Loader2 size={13} className="animate-spin" /> : durum === 'ok' ? <CheckCircle2 size={13} className="text-emerald-600" /> : <Send size={13} />}
-                        {durum === 'ok' ? 'Gönderildi' : durum === 'hata' ? 'Tekrar dene' : 'WhatsApp'}
-                      </Button>
-                    )}
+              {sonuc.bulunan.map((f, i) => (
+                <div key={i} className="flex items-center justify-between gap-2 flex-wrap border-b border-cizgi/60 py-1.5">
+                  <div className="text-sm min-w-0">
+                    <span className="inline-flex items-center gap-1"><Building size={13} className="text-metin-yum" /> <b>{f.ad}</b></span>
+                    {f.email
+                      ? <span className="text-marka-700"> · <Mail size={12} className="inline" /> {f.email} {sonuc.gonderilen > 0 && <Badge tone="yesil">mail ✓</Badge>}</span>
+                      : f.telefon ? <span className="text-metin-yum"> · <Phone size={12} className="inline" /> {f.telefon} <Badge tone="gri">e-posta yok</Badge></span> : null}
                   </div>
-                );
-              })}
+                </div>
+              ))}
             </div>
-          ) : <p className="text-sm text-metin-yum mb-3">Bu kategoride e-posta/telefonu olan firma bulunamadı. Farklı kategori/bölge dene.</p>}
+          ) : <p className="text-sm text-metin-yum mb-3">Bu kategoride e-postalı profesyonel firma bulunamadı. Farklı kategori/bölge dene; telefonla çalışan firmalar için WhatsApp sayfasını kullan.</p>}
 
           <div className="flex items-center gap-2 flex-wrap">
             <Button variant="ghost" size="sm" onClick={() => setMailAcik((v) => !v)}>{mailAcik ? <ChevronUp size={15} /> : <ChevronDown size={15} />} Gönderilen e-mailı gör</Button>

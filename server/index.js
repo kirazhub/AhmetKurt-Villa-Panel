@@ -476,15 +476,15 @@ app.post('/api/firma-bul', async (req, res) => {
   }
 });
 
-// --- TEK TIKLA OTOMATİK TEKLİF: firma bul + mail yaz + gönder ---
+// --- OTOMATİK TEKLİF (E-POSTA): profesyonel firma bul + DETAYLI mail yaz + gönder ---
 app.post('/api/teklif-otomatik', async (req, res) => {
   if (!yapilandirilmis()) return res.status(503).json({ hata: 'OpenRouter anahtarı yok' });
   try {
-    const { kategori = 'Hafriyat / Kazı', bolge = 'İstanbul Avrupa Yakası / Arnavutköy', sorular = '', imza = '', ekler = [], projeNot = '', autoMail = true } = req.body || {};
+    const { kategori = 'Hafriyat / Kazı', bolge = 'İstanbul Avrupa Yakası / Arnavutköy', sorular = '', imza = '', ekler = [], kabaNot = '', proje = '', specler = '', autoMail = true } = req.body || {};
 
-    // 1) Firmaları web'de bul (JSON)
+    // 1) Firmaları web'de bul — PROFESYONEL / e-postalı firmalara öncelik
     const bulSys = 'Sen tedarikçi/firma araştırma asistanısın. Web aramasıyla GERÇEK firmalar bulursun. Yanıtın SADECE geçerli JSON dizisi olmalı, başka metin yok.';
-    const bulSoru = `"${bolge}" bölgesinde "${kategori}" işi yapan firmaları web'de KAPSAMLI araştır (gerekirse 50-100 firma tara). Bu sektörde çoğu firma TELEFON/WhatsApp ile çalışır. Bana e-posta VEYA telefon numarası olan firmaları getir; telefonu olanları MUTLAKA ekle. Hedef: 20-30 firma. Çıktı KESİN saf JSON: [{"ad":"","email":"","telefon":"","web":"","sehir":""}] . Bilgiyi UYDURMA; kaynakta gerçekten gördüğünü yaz.`;
+    const bulSoru = `"${bolge}" bölgesinde "${kategori}" işi yapan PROFESYONEL firmaları web'de kapsamlı araştır. ÖNCELİĞİN: kurumsal e-POSTA adresi ve web sitesi olan, ciddi/kurumsal firmalar — bunları listenin başına koy. Mümkün olduğunca çok firma için GERÇEK e-posta adresi bul. Telefonu da ekle ama e-postası olanlar önce gelsin. Hedef: 20-30 firma. Çıktı KESİN saf JSON: [{"ad":"","email":"","telefon":"","web":"","sehir":""}] . Bilgiyi UYDURMA; kaynakta gerçekten gördüğünü yaz, e-posta yoksa boş bırak.`;
     const { metin: firmaMetin } = await claudeWeb(bulSys, bulSoru, 3500);
     let firmalar = [];
     const mm = firmaMetin.match(/\[[\s\S]*\]/);
@@ -492,23 +492,35 @@ app.post('/api/teklif-otomatik', async (req, res) => {
     if (!Array.isArray(firmalar)) firmalar = [];
     const gecerli = (e) => typeof e === 'string' && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e) && !/example\.com$/i.test(e);
     const telefonVar = (t) => typeof t === 'string' && t.replace(/\D/g, '').length >= 10;
-    const kullanilabilir = firmalar.filter((f) => gecerli(f.email) || telefonVar(f.telefon));
+    let kullanilabilir = firmalar.filter((f) => gecerli(f.email) || telefonVar(f.telefon));
+    // e-postalı (profesyonel) firmaları başa al
+    kullanilabilir.sort((a, b) => (gecerli(b.email) ? 1 : 0) - (gecerli(a.email) ? 1 : 0));
     const emailli = kullanilabilir.filter((f) => gecerli(f.email));
     const telefonlu = kullanilabilir.filter((f) => telefonVar(f.telefon));
 
-    // 2) Teklif mailini yaz (AI) — e-posta gönderimi için uzun gövde
-    const { metin: govde } = await claude(
-      'Sen kıdemli bir satın alma uzmanısın; firmalara gönderilecek profesyonel teklif maili yazarsın. Sadece e-posta gövdesini yaz.',
-      [{ role: 'user', icerik: `"${kategori}" işi için İstanbul'daki firmalara gönderilecek profesyonel, kısa-net TEKLİF İSTEME e-postası yaz. Proje: Ahmet Kurt Villa, İstanbul/Arnavutköy/Boyalık, arsa HAFİF EĞİMLİ. ${projeNot}. "Öncelikle fiyat ve süre öğrenmek istiyoruz" vurgusu olsun. Şu soruları madde madde sor:\n${sorular}\nSonunda şu imzayla bitir:\n${imza}\nTürkçe, resmi ama sıcak. Sadece gövde, konu satırı yazma.` }],
-      1200,
-    );
+    // 2) DETAYLI, profesyonel teklif maili yaz
+    const mailSys = `Sen "Ahmet Kurt Villa Projesi"nin satın alma ve teknik koordinasyon yöneticisi adına yazan, çok deneyimli bir inşaat satın alma uzmanısın. Görevin: profesyonel taşeron/tedarikçi firmalara gönderilecek DETAYLI, bilgi verici ve net bilgi isteyici bir teklif e-postası yazmak. Profesyonel firmalar; işin kapsamını, ölçüleri ve beklentileri net anlatan, ciddi hazırlanmış talepleri ciddiye alır. Resmi ama akıcı bir dil kullan. SADECE e-posta gövdesini yaz (konu satırı ekleme, ön/son açıklama yazma).`;
+    const mailIstem = `İŞ / KATEGORİ: ${kategori}
+BÖLGE: ${bolge}
 
-    // 2b) WhatsApp için KISA, öz, fiyat odaklı mesaj
-    const { metin: waMesaj } = await claude(
-      'Firmalara WhatsApp\'tan atılacak kısa mesajlar yazarsın. Sadece mesajı yaz.',
-      [{ role: 'user', icerik: `"${kategori}" işi için WhatsApp'tan atılacak KISA, net, bilgilendirici ve FİYAT ODAKLI bir mesaj yaz (en fazla 4-5 cümle). Proje: Arnavutköy'de hafif eğimli arsada villa. ${projeNot} Mesaj: selam + ne iş yaptıracağımız + en kritik sorular (yaklaşık fiyat, ne zaman başlar, ne kadar sürer) + kısa imza. İmza: ${imza.split('\n')[0]} (${imza.split('\n')[1] || ''}). Türkçe, samimi-profesyonel. Sadece mesaj metni.` }],
-      400,
-    );
+PROJE KÜNYESİ:
+${proje || 'Ahmet Kurt Villa, İstanbul/Arnavutköy/Boyalık; lüks betonarme villa.'}
+
+BELGELERDEN ÇIKARILMIŞ İLGİLİ TEKNİK VERİLER (ölçüler, m², kotlar, malzeme — varsa kullan):
+${(specler || '').slice(0, 9000) || '(özel ölçü verisi eklenmedi — genel proje bilgisini kullan)'}
+
+YÖNETİCİNİN KISA İŞ NOTU (bunu profesyonelce genişlet, mailin merkezine al):
+${kabaNot || '(serbest not girilmedi — kategoriye uygun standart kapsamı yaz)'}
+
+GÖREV: Yukarıdaki bilgilerle, "${kategori}" işi için PROFESYONEL bir firmaya gönderilecek DETAYLI teklif isteme e-postası yaz:
+- Kibar açılış + projeyi kısaca tanıt (ad, konum, ölçek/m², yapı tipi, kat durumu).
+- Yapılacak işin KAPSAMINI net ve teknik anlat; elindeki ölçüleri, m²'leri, kotları, malzeme bilgilerini SOMUT olarak belirt. Yoksa firmadan bu detayları netleştirmesini iste.
+- Firmadan KAPSAMLI ve detaylı teklif iste: kalem kalem birim fiyatlar, malzeme dahil mi (hangi markalar/kalite seçenekleri), iş süresi, başlangıç tarihi, ekip/ekipman, benzer referans işler, ödeme koşulları, garanti/kalite belgeleri, keşif için saha daveti.
+${sorular ? `- Ayrıca şu özel soruları da sor:\n${sorular}` : ''}
+- Şu imzayla bitir:\n${imza}
+
+Türkçe, resmi-profesyonel, akıcı ve bilgi yoğun. Profesyonelce, ama gereksiz uzatma. Sadece gövde metni.`;
+    const { metin: govde } = await claude(mailSys, [{ role: 'user', icerik: mailIstem }], 2000);
     const konu = `Teklif Talebi — ${kategori} — Ahmet Kurt Villa Projesi`;
 
     // 3) E-postası olanlara gönder
@@ -519,7 +531,7 @@ app.post('/api/teklif-otomatik', async (req, res) => {
       gonderilen = emailli.length;
     }
 
-    res.json({ bulunan: kullanilabilir, toplamTaranan: firmalar.length, emailliSayi: emailli.length, telefonluSayi: telefonlu.length, gonderilen, konu, govde, waMesaj, mailHazir: mailHazir() });
+    res.json({ bulunan: kullanilabilir, toplamTaranan: firmalar.length, emailliSayi: emailli.length, telefonluSayi: telefonlu.length, gonderilen, konu, govde, mailHazir: mailHazir() });
   } catch (e) {
     res.status(500).json({ hata: 'Otomatik teklif başarısız', detay: String(e?.message || e) });
   }
