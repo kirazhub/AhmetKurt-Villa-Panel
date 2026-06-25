@@ -32,13 +32,13 @@ sunucunun siyah komut ekranı tarayıcıda açılır. (SSH/PuTTY ile uğraşmana
 ---
 
 ## ADIM 3 — Projeyi sunucuya getir
-**Yol A (önerilen) — GitHub'dan:** Proje GitHub'a yüklenmişse, terminale:
+**Yol A (önerilen) — GitHub'dan:** Proje GitHub'a yüklendi. Terminale:
 ```
 cd /root
-git clone https://github.com/KULLANICI_ADIN/AhmetKurt-Villa-Panel.git proje
+git clone https://github.com/kirazhub/AhmetKurt-Villa-Panel.git proje
 cd proje
 ```
-(Ben istersen projeyi senin GitHub hesabına yükleyebilirim; o zaman buradaki linki sana veririm.)
+(Repo özeldir; `git clone` sorarsa GitHub kullanıcı adın + token gerekir. Tek seferlik, birlikte hallederiz.)
 
 **Yol B — Sıkıştırılmış dosya yükleyerek:** Hostinger Dosya Yöneticisi'nden `.zip` yükleyip
 sunucuda açabilirsin. (Yol A çok daha kolay; onu öneririm.)
