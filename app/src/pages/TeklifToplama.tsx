@@ -215,8 +215,14 @@ export default function TeklifToplama() {
       {/* ADIM 2 — Firma ara */}
       <Card className="mb-6"><CardBody className="space-y-4">
         <p className="font-semibold text-metin flex items-center gap-2"><span className="w-6 h-6 rounded-full bg-marka-500 text-white text-xs flex items-center justify-center font-bold">2</span> Firma ara</p>
+        <div className="flex flex-wrap gap-1.5">
+          {['İstanbul Avrupa Yakası / Arnavutköy', 'İstanbul Avrupa Yakası', 'İstanbul Anadolu Yakası', 'İstanbul (geneli)', 'Türkiye geneli'].map((b) => (
+            <button key={b} type="button" onClick={() => setBolge(b)}
+              className={`px-2.5 py-1 rounded-lg text-xs border transition cursor-pointer ${bolge === b ? 'bg-marka-500 text-white border-marka-500' : 'bg-white border-cizgi text-metin-yum hover:border-marka-300'}`}>{b}</button>
+          ))}
+        </div>
         <div className="flex items-end gap-3 flex-wrap">
-          <div className="flex-1 min-w-[200px]"><Field label="Bölge"><Input value={bolge} onChange={(e) => setBolge(e.target.value)} /></Field></div>
+          <div className="flex-1 min-w-[200px]"><Field label="Bölge (seçebilir veya yazabilirsin)"><Input value={bolge} onChange={(e) => setBolge(e.target.value)} /></Field></div>
           <Button onClick={firmaAra} disabled={ariyor}>{ariyor ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />} "{kategori}" için ara</Button>
         </div>
         {ariyor && <p className="text-sm text-metin-yum flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Profesyonel firmalar araştırılıyor (e-postalılar öne çıkar)… (1-2 dk)</p>}

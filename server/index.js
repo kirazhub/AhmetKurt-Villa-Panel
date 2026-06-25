@@ -509,8 +509,8 @@ app.post('/api/firma-bul', async (req, res) => {
       ? 'Bu işte çoğu firma TELEFON/WhatsApp ile çalışır; TELEFON numarası olan firmaları öncelikle getir, e-postası olanı da ekle.'
       : 'Kurumsal e-POSTA adresi ve web sitesi olan PROFESYONEL firmaları öncelikle getir; e-postası olanları listenin başına koy. Telefonu da ekle.';
     const sys = 'Sen bir tedarikçi/firma araştırma asistanısın. Web aramasıyla GERÇEK firmalar bulursun. Yanıtın SADECE geçerli JSON dizisi olmalı; öncesinde/sonrasında hiçbir açıklama yazma.';
-    const soru = `"${bolge}" bölgesinde "${kategori}" işi yapan firmaları web'de KAPSAMLI araştır. ${oncelik} Hedef: 20-30 firma. Çıktı KESİN saf JSON: [{"ad":"","email":"","telefon":"","web":"","sehir":""}] . Bilgiyi UYDURMA; kaynakta gerçekten gördüğünü yaz, e-posta yoksa boş bırak.`;
-    const { metin } = await claudeWeb(sys, soru, 3500);
+    const soru = `"${bolge}" bölgesinde "${kategori}" işi yapan firmaları web'de ÇOK KAPSAMLI araştır (geniş tara, farklı kaynaklara bak). ${oncelik} Mümkün olduğunca ÇOK firma getir — hedef 40-50 firma. Çıktı KESİN saf JSON: [{"ad":"","email":"","telefon":"","web":"","sehir":""}] . Bilgiyi UYDURMA; kaynakta gerçekten gördüğünü yaz, e-posta yoksa boş bırak. Aynı firmayı tekrarlama.`;
+    const { metin } = await claudeWeb(sys, soru, 7000);
     let arr = [];
     const m = metin.match(/\[[\s\S]*\]/);
     try { arr = JSON.parse(m ? m[0] : metin); } catch { arr = []; }
@@ -518,9 +518,12 @@ app.post('/api/firma-bul', async (req, res) => {
     const gecerli = (e) => typeof e === 'string' && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e) && !/example\.com$/i.test(e);
     const telVar = (t) => typeof t === 'string' && t.replace(/\D/g, '').length >= 10;
     let firmalar = arr.filter((f) => gecerli(f.email) || telVar(f.telefon)).map((f) => ({ ...f, email: gecerli(f.email) ? f.email : '' }));
+    // tekrarları (aynı isim/email/telefon) ele
+    const gorulen = new Set();
+    firmalar = firmalar.filter((f) => { const k = (f.email || '') + '|' + (f.telefon || '').replace(/\D/g, '') + '|' + (f.ad || '').toLowerCase().trim(); if (gorulen.has(k)) return false; gorulen.add(k); return true; });
     if (kanal === 'telefon') firmalar.sort((a, b) => (telVar(b.telefon) ? 1 : 0) - (telVar(a.telefon) ? 1 : 0));
     else firmalar.sort((a, b) => (gecerli(b.email) ? 1 : 0) - (gecerli(a.email) ? 1 : 0));
-    res.json({ firmalar, ham: firmalar.length ? undefined : metin.slice(0, 1200) });
+    res.json({ firmalar: firmalar.slice(0, 50), ham: firmalar.length ? undefined : metin.slice(0, 1200) });
   } catch (e) {
     res.status(500).json({ hata: 'Firma araştırması başarısız', detay: String(e?.message || e) });
   }
