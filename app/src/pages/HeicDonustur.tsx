@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import heic2any from 'heic2any';
 import { ImageDown, Upload, Download, Loader2, CheckCircle2, XCircle, Archive } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { PageHeader, Card, CardBody, Button, EmptyState } from '../components/ui';
@@ -26,8 +25,9 @@ export default function HeicDonustur() {
       const jpgAd = f.name.replace(/\.(heic|heif)$/i, '') + '.jpg';
       setOgeler((o) => [...o, { id, ad: jpgAd, durum: 'cevriliyor' }]);
       try {
-        const out = await heic2any({ blob: f, toType: 'image/jpeg', quality: 0.9 });
-        const blob = (Array.isArray(out) ? out[0] : out) as Blob;
+        const resp = await fetch('/api/heic-jpg', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: f });
+        if (!resp.ok) throw new Error('cevrim hatasi');
+        const blob = await resp.blob();
         const url = URL.createObjectURL(blob);
         setOgeler((o) => o.map((x) => (x.id === id ? { ...x, durum: 'bitti', url, blob } : x)));
       } catch {

@@ -3,7 +3,9 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'fs';
+import { execFile } from 'child_process';
+import { tmpdir } from 'os';
 
 dotenv.config();
 
@@ -208,6 +210,29 @@ app.delete('/api/danisma/:id', (req, res) => {
 // --- Tam panel durumu yedeği (hiçbir bilgi kaybı olmasın) ---
 app.post('/api/yedek', (req, res) => { yaz('durum.json', { tarih: new Date().toISOString(), durum: req.body?.durum ?? req.body }); res.json({ ok: true, tarih: new Date().toISOString() }); });
 app.get('/api/yedek', (_req, res) => res.json(oku('durum.json', null)));
+
+// --- HEIC -> JPG dönüştürme (sunucuda libheif/ImageMagick ile, güvenilir) ---
+app.post('/api/heic-jpg', express.raw({ type: '*/*', limit: '80mb' }), (req, res) => {
+  if (!req.body || !req.body.length) return res.status(400).json({ hata: 'Dosya gelmedi' });
+  const taban = join(tmpdir(), `heic-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
+  const inPath = `${taban}.heic`;
+  const outPath = `${taban}.jpg`;
+  const temizle = () => { try { unlinkSync(inPath); } catch { /**/ } try { unlinkSync(outPath); } catch { /**/ } };
+  try { writeFileSync(inPath, req.body); } catch (e) { return res.status(500).json({ hata: 'yazma hatasi', detay: String(e) }); }
+  const gonder = () => {
+    try { const buf = readFileSync(outPath); res.type('image/jpeg').send(buf); }
+    catch (e) { res.status(500).json({ hata: 'cikti okunamadi', detay: String(e) }); }
+    finally { temizle(); }
+  };
+  // Önce heif-convert, olmazsa ImageMagick convert
+  execFile('heif-convert', ['-q', '90', inPath, outPath], (err) => {
+    if (!err) return gonder();
+    execFile('convert', [inPath, outPath], (err2) => {
+      if (err2) { temizle(); return res.status(500).json({ hata: 'Dönüştürülemedi (libheif/imagemagick yok?)', detay: String(err2) }); }
+      gonder();
+    });
+  });
+});
 
 // Üretimde derlenmiş paneli de servis et (varsa)
 app.use(express.static(join(__dirname, '..', 'app', 'dist')));
