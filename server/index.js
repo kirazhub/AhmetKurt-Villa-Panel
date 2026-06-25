@@ -402,6 +402,14 @@ app.post('/api/wa/kuyruk-durdur', (_req, res) => {
   res.json({ ok: true });
 });
 
+// Sıradaki ilk bekleyeni HEMEN gönder; kalanları aynı rastgele aralıkla sırada bırak
+app.post('/api/wa/kuyruk-simdi', (_req, res) => {
+  if (!kuyruk || !kuyruk.aktif || !kuyrukSiradaki()) return res.status(400).json({ hata: 'Sırada bekleyen mesaj yok' });
+  if (kuyrukTimer) { clearTimeout(kuyrukTimer); kuyrukTimer = null; }
+  kuyrukAdim(); // ilkini gönderir, kalanları min-max rastgele aralıkla planlar
+  res.json({ ok: true });
+});
+
 // --- Güncel USD/TRY kuru (günlük, 6 saat önbellekli, yedekli) ---
 let _kur = oku('kur.json', null); // { usd, tarih, kaynak, cekildiMs }
 async function kurCek() {

@@ -113,6 +113,7 @@ export default function Whatsapp() {
   };
 
   const motorDurdur = async () => { if (!confirm('Gönderim motoru durdurulsun mu? (gönderilenler geri alınmaz)')) return; await fetch('/api/wa/kuyruk-durdur', { method: 'POST' }); kuyrukGetir(); };
+  const simdiGonder = async () => { await fetch('/api/wa/kuyruk-simdi', { method: 'POST' }); setTimeout(kuyrukGetir, 1500); };
 
   const kuyrukDurum = (f: Firma): string | undefined => { const k = kuyruk?.items?.find((i) => i.numara === f.telefon); return k?.durum; };
 
@@ -230,7 +231,10 @@ export default function Whatsapp() {
               <div className="space-y-2">
                 <p className="text-sm font-medium text-emerald-700 flex items-center gap-1.5"><Clock size={15} /> Motor çalışıyor</p>
                 <p className="text-xs text-metin-yum">Bekleyen: <b>{kuyruk.bekleyen}</b> firma · Sıradaki ~<b>{sonrakiYazi}</b> sonra ({kuyruk.minDk}-{kuyruk.maxDk} dk arası rastgele). Bu ekranı kapatabilirsin, sistem devam eder.</p>
-                <Button size="sm" variant="ghost" onClick={motorDurdur} className="text-rose-600"><StopCircle size={14} /> Motoru durdur</Button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button size="sm" variant="soft" onClick={simdiGonder}><Send size={14} /> Sıradakini şimdi gönder</Button>
+                  <Button size="sm" variant="ghost" onClick={motorDurdur} className="text-rose-600"><StopCircle size={14} /> Motoru durdur</Button>
+                </div>
               </div>
             ) : (
               <>
