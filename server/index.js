@@ -410,6 +410,39 @@ app.post('/api/wa/kuyruk-simdi', (_req, res) => {
   res.json({ ok: true });
 });
 
+// Bekleyenleri ÖZEL/MANUEL gecikmelerle gönder (şimdiden itibaren, dakika). Örn [0,3,5,7]
+let zamanliTimerlar = [];
+app.post('/api/wa/kuyruk-zamanli', (req, res) => {
+  try {
+    const { araliklarDk = [] } = req.body || {};
+    if (!kuyruk || !kuyruk.aktif || !kuyrukSiradaki()) return res.status(400).json({ hata: 'Sırada bekleyen mesaj yok' });
+    if (kuyrukTimer) { clearTimeout(kuyrukTimer); kuyrukTimer = null; }
+    zamanliTimerlar.forEach((t) => clearTimeout(t)); zamanliTimerlar = [];
+    const bekleyenler = (kuyruk.items || []).filter((i) => i.durum === 'bekliyor');
+    const plan = [];
+    bekleyenler.forEach((it, idx) => {
+      const dk = araliklarDk[idx] != null ? Number(araliklarDk[idx]) : Number(araliklarDk[araliklarDk.length - 1] ?? 7);
+      const ms = Math.max(0, dk) * 60000;
+      const t = setTimeout(async () => {
+        if (!kuyruk || !kuyruk.aktif) return;
+        const cur = (kuyruk.items || []).find((x) => x.numara === it.numara && x.durum === 'bekliyor');
+        if (!cur) return;
+        if (!wa.durum().baglandi) { cur.durum = 'hata'; cur.hata = 'WhatsApp bağlı değil'; kuyrukKaydet(); return; }
+        try { await wa.gonder(cur.numara, kuyruk.mesaj || '', kuyruk.gorseller); cur.durum = 'gonderildi'; }
+        catch (e) { cur.durum = 'hata'; cur.hata = String(e?.message || e); }
+        cur.zaman = new Date().toISOString(); kuyruk.sonGonderimMs = Date.now();
+        if (!kuyrukSiradaki()) { kuyruk.aktif = false; kuyruk.sonrakiMs = 0; }
+        kuyrukKaydet();
+      }, ms);
+      zamanliTimerlar.push(t);
+      plan.push({ numara: it.numara, dakikaSonra: Math.max(0, dk) });
+    });
+    kuyruk.sonrakiMs = Date.now() + (plan.length ? Math.max(0, plan[0].dakikaSonra) * 60000 : 0);
+    kuyrukKaydet();
+    res.json({ ok: true, plan });
+  } catch (e) { res.status(500).json({ hata: String(e?.message || e) }); }
+});
+
 // --- Güncel USD/TRY kuru (günlük, 6 saat önbellekli, yedekli) ---
 let _kur = oku('kur.json', null); // { usd, tarih, kaynak, cekildiMs }
 async function kurCek() {
