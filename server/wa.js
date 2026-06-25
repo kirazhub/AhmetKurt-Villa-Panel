@@ -2,7 +2,7 @@
 // WhatsApp Web entegrasyonu (Baileys) — kendi numaranı QR ile bağla,
 // firmalara mesaj gönder, gelen cevapları gör. (Resmi olmayan; ölçülü kullan.)
 // ============================================================================
-import makeWASocket, { useMultiFileAuthState, DisconnectReason, Browsers } from '@whiskeysockets/baileys';
+import makeWASocket, { useMultiFileAuthState, DisconnectReason, Browsers, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
 import qrcode from 'qrcode';
 import pino from 'pino';
 import { join } from 'path';
@@ -24,7 +24,9 @@ export async function baslat(veriDir) {
   baslatildi = true;
   try {
     const { state, saveCreds } = await useMultiFileAuthState(join(veriDir, 'wa-auth'));
-    sock = makeWASocket({ auth: state, printQRInTerminal: false, logger, browser: Browsers.appropriate('Chrome'), syncFullHistory: false });
+    let version;
+    try { const r = await fetchLatestBaileysVersion(); version = r.version; } catch { /* varsayılan */ }
+    sock = makeWASocket({ auth: state, version, printQRInTerminal: false, logger, browser: Browsers.appropriate('Chrome'), syncFullHistory: false });
     sock.ev.on('creds.update', saveCreds);
     sock.ev.on('connection.update', async (u) => {
       const { connection, lastDisconnect, qr } = u;
