@@ -672,30 +672,34 @@ app.post('/api/mail/gonder', async (req, res) => {
 app.post('/api/wa/liste-mail', async (req, res) => {
   if (!mailHazir()) return res.status(503).json({ hata: 'Mail hesabı tanımlı değil (.env: MAIL_USER/MAIL_PASS).' });
   try {
-    const { mesaj = '', numaralar = [], hedefMail = 'raifkurt@gmail.com' } = req.body || {};
+    const { mesaj = '', numaralar = [], firmalar = [], hedefMail = 'raifkurt@gmail.com' } = req.body || {};
     if (!mesaj.trim()) return res.status(400).json({ hata: 'Mesaj boş.' });
-    let liste = Array.isArray(numaralar) ? numaralar : String(numaralar).split(/[\n,;]+/);
-    liste = liste.map((n) => String(n).replace(/\D/g, '')).filter((n) => n.length >= 10);
-    // tekrarları ele
-    liste = [...new Set(liste)];
-    if (liste.length === 0) return res.status(400).json({ hata: 'Geçerli numara yok.' });
+    // Hem AI'nın bulduğu firmalar (ad+telefon) hem manuel numaralar birleştirilir
+    let kayitlar = [];
+    (Array.isArray(firmalar) ? firmalar : []).forEach((f) => { const t = String(f.telefon || '').replace(/\D/g, ''); if (t.length >= 10) kayitlar.push({ ad: f.ad || '', tel: t }); });
+    let manuel = Array.isArray(numaralar) ? numaralar : String(numaralar).split(/[\n,;]+/);
+    manuel.map((n) => String(n).replace(/\D/g, '')).filter((n) => n.length >= 10).forEach((t) => kayitlar.push({ ad: '', tel: t }));
+    // tekrarları (telefona göre) ele
+    const gor = new Set();
+    kayitlar = kayitlar.filter((k) => { if (gor.has(k.tel)) return false; gor.add(k.tel); return true; });
+    if (kayitlar.length === 0) return res.status(400).json({ hata: 'Geçerli numara yok.' });
     const norm = (d) => { if (d.startsWith('0')) d = d.slice(1); if (!d.startsWith('90')) d = '90' + d; return d; };
     const enc = encodeURIComponent(mesaj);
     const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
-    const satirlar = liste.map((n, i) => {
-      const d = norm(n);
-      return `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee">${i + 1}</td><td style="padding:6px 10px;border-bottom:1px solid #eee">${n}</td><td style="padding:6px 10px;border-bottom:1px solid #eee"><a href="https://wa.me/${d}?text=${enc}" style="background:#25D366;color:#fff;text-decoration:none;padding:6px 12px;border-radius:6px;display:inline-block">WhatsApp'ta aç & gönder →</a></td></tr>`;
+    const satirlar = kayitlar.map((k, i) => {
+      const d = norm(k.tel);
+      const adHtml = k.ad ? `<b>${esc(k.ad)}</b><br><span style="color:#777">${esc(k.tel)}</span>` : esc(k.tel);
+      return `<tr><td style="padding:8px 10px;border-bottom:1px solid #eee">${i + 1}</td><td style="padding:8px 10px;border-bottom:1px solid #eee">${adHtml}</td><td style="padding:8px 10px;border-bottom:1px solid #eee"><a href="https://wa.me/${d}?text=${enc}" style="background:#25D366;color:#fff;text-decoration:none;padding:7px 13px;border-radius:6px;display:inline-block">WhatsApp'ta aç & gönder →</a></td></tr>`;
     }).join('');
     const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:680px;margin:0 auto;color:#1f2430">
-      <h2 style="color:#92400e">WhatsApp Gönderim Listesi (${liste.length} numara)</h2>
+      <h2 style="color:#92400e">WhatsApp Gönderim Listesi (${kayitlar.length} firma)</h2>
       <p style="font-size:13px;color:#555">Aşağıdaki yeşil butona tıkla → WhatsApp <b>mesaj hazır</b> açılır → sadece <b>gönder</b>'e bas. Numaraların banlanmaması için aralarında biraz bekle.</p>
       <div style="background:#f6f7f9;border:1px solid #e7e9ee;border-radius:10px;padding:14px;white-space:pre-wrap;font-size:14px;margin:14px 0">${esc(mesaj)}</div>
-      <table style="border-collapse:collapse;width:100%;font-size:14px"><thead><tr><th style="text-align:left;padding:6px 10px;border-bottom:2px solid #d97706">#</th><th style="text-align:left;padding:6px 10px;border-bottom:2px solid #d97706">Numara</th><th style="text-align:left;padding:6px 10px;border-bottom:2px solid #d97706">Gönder</th></tr></thead><tbody>${satirlar}</tbody></table>
-      <p style="font-size:12px;color:#888;margin-top:18px">Ahmet Kurt Villa Paneli · Telefon: ${esc(liste.length)} numara için hazırlandı.</p>
+      <table style="border-collapse:collapse;width:100%;font-size:14px"><thead><tr><th style="text-align:left;padding:8px 10px;border-bottom:2px solid #d97706">#</th><th style="text-align:left;padding:8px 10px;border-bottom:2px solid #d97706">Firma / Numara</th><th style="text-align:left;padding:8px 10px;border-bottom:2px solid #d97706">Gönder</th></tr></thead><tbody>${satirlar}</tbody></table>
     </div>`;
-    const text = `WhatsApp Gönderim Listesi (${liste.length} numara)\n\nMESAJ:\n${mesaj}\n\nNUMARALAR ve linkler:\n` + liste.map((n) => `${n} → https://wa.me/${norm(n)}?text=${enc}`).join('\n');
-    await transport().sendMail({ from: `Ahmet Kurt Villa Paneli <${MAIL_USER}>`, to: hedefMail, subject: `WhatsApp Gönderim Listesi — ${liste.length} numara`, text, html });
-    res.json({ ok: true, adet: liste.length, hedef: hedefMail });
+    const text = `WhatsApp Gönderim Listesi (${kayitlar.length} firma)\n\nMESAJ:\n${mesaj}\n\nFİRMALAR:\n` + kayitlar.map((k) => `${k.ad ? k.ad + ' — ' : ''}${k.tel} → https://wa.me/${norm(k.tel)}?text=${enc}`).join('\n');
+    await transport().sendMail({ from: `Ahmet Kurt Villa Paneli <${MAIL_USER}>`, to: hedefMail, subject: `WhatsApp Gönderim Listesi — ${kayitlar.length} firma`, text, html });
+    res.json({ ok: true, adet: kayitlar.length, hedef: hedefMail });
   } catch (e) {
     res.status(500).json({ hata: 'Gönderilemedi', detay: String(e?.message || e) });
   }

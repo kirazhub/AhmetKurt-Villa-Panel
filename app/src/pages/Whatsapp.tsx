@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { Loader2, Sparkles, Wand2, CheckSquare, Square, Mail, Send, ListPlus, CheckCircle2, Info } from 'lucide-react';
-import { PageHeader, Card, CardBody, Button, Field, Input, Select, Textarea } from '../components/ui';
+import { Loader2, Sparkles, Wand2, CheckSquare, Square, Mail, Send, ListPlus, CheckCircle2, Info, Search, Building, Phone } from 'lucide-react';
+import { PageHeader, Card, CardBody, Button, Badge, Field, Input, Select, Textarea } from '../components/ui';
 import { useStore } from '../store/useStore';
 import { TASERON_KATEGORILERI } from '../types';
+
+interface Firma { ad: string; email?: string; telefon?: string; web?: string; sehir?: string; }
 
 export default function Whatsapp() {
   const gonderenProfil = useStore((s) => s.gonderenProfil);
@@ -15,7 +17,12 @@ export default function Whatsapp() {
   const [aiYaziyor, setAiYaziyor] = useState(false);
   const [teknikDetay, setTeknikDetay] = useState(true);
 
-  const [numaralar, setNumaralar] = useState('');
+  const [bolge, setBolge] = useState('İstanbul Avrupa Yakası / Arnavutköy');
+  const [ariyor, setAriyor] = useState(false);
+  const [firmalar, setFirmalar] = useState<Firma[]>([]);
+  const [secili, setSecili] = useState<Record<string, boolean>>({});
+  const [manuel, setManuel] = useState('');
+
   const [hedefMail, setHedefMail] = useState('raifkurt@gmail.com');
   const [gonderiliyor, setGonderiliyor] = useState(false);
   const [sonuc, setSonuc] = useState<string | null>(null);
@@ -23,8 +30,10 @@ export default function Whatsapp() {
   const imza = `${gonderenProfil.ad}\n${gonderenProfil.unvan}`;
   const speclerTopla = () => belgeler.filter((b) => b.spec).map((b) => `### ${b.ad}\n${b.spec}`).join('\n\n');
   const specliSayi = belgeler.filter((b) => b.spec).length;
-
-  const numaraSayisi = [...new Set((numaralar.match(/\d[\d\s]{8,}/g) || []).map((n) => n.replace(/\D/g, '')).filter((n) => n.length >= 10))].length;
+  const telefonlu = firmalar.filter((f) => f.telefon);
+  const seciliFirmalar = telefonlu.filter((f) => secili[f.telefon!]);
+  const manuelSayi = [...new Set((manuel.match(/\d[\d\s]{8,}/g) || []).map((n) => n.replace(/\D/g, '')).filter((n) => n.length >= 10))].length;
+  const toplamHedef = seciliFirmalar.length + manuelSayi;
 
   const aiYaz = async () => {
     setAiYaziyor(true);
@@ -36,15 +45,34 @@ export default function Whatsapp() {
     setAiYaziyor(false);
   };
 
+  const firmaAra = async () => {
+    setAriyor(true); setFirmalar([]); setSecili({});
+    try {
+      const r = await fetch('/api/firma-bul', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kategori, bolge, kanal: 'telefon' }) });
+      const d = await r.json();
+      if (r.ok) {
+        const list: Firma[] = d.firmalar || [];
+        setFirmalar(list);
+        const hepsi: Record<string, boolean> = {};
+        list.filter((f) => f.telefon).forEach((f) => { hepsi[f.telefon!] = true; }); // varsayılan hepsi seçili
+        setSecili(hepsi);
+      } else alert('Hata: ' + (d.hata || ''));
+    } catch { alert('Bağlantı hatası'); }
+    setAriyor(false);
+  };
+
+  const tumunuSec = () => { const hepsi = telefonlu.every((f) => secili[f.telefon!]); const y: Record<string, boolean> = {}; telefonlu.forEach((f) => { y[f.telefon!] = !hepsi; }); setSecili(y); };
+
   const listeyiGonder = async () => {
     if (!mesaj.trim()) { alert('Önce mesajı hazırla.'); return; }
-    if (numaraSayisi === 0) { alert('En az bir geçerli numara gir.'); return; }
+    if (toplamHedef === 0) { alert('AI ile firma bul veya manuel numara gir.'); return; }
     if (!hedefMail.trim()) { alert('E-posta adresi gir.'); return; }
     setGonderiliyor(true); setSonuc(null);
     try {
-      const r = await fetch('/api/wa/liste-mail', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mesaj, numaralar, hedefMail }) });
+      const body = { mesaj, hedefMail, firmalar: seciliFirmalar.map((f) => ({ ad: f.ad, telefon: f.telefon })), numaralar: manuel };
+      const r = await fetch('/api/wa/liste-mail', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const d = await r.json();
-      if (r.ok) setSonuc(`✓ ${d.adet} numara ${d.hedef} adresine gönderildi. E-postanı aç, her numaranın yanındaki yeşil butona tıkla, WhatsApp mesaj hazır açılır — sadece gönder'e bas.`);
+      if (r.ok) setSonuc(`✓ ${d.adet} firma ${d.hedef} adresine gönderildi. E-postanı (telefonundan) aç, her firmanın yanındaki yeşil butona tıkla → WhatsApp mesaj hazır açılır → gönder'e bas.`);
       else alert('Hata: ' + (d.hata || ''));
     } catch { alert('Bağlantı hatası'); }
     setGonderiliyor(false);
@@ -54,11 +82,11 @@ export default function Whatsapp() {
 
   return (
     <>
-      <PageHeader baslik="WhatsApp Gönderim Listesi" aciklama="Mesajı hazırla → numaraları yapıştır → tek e-postayla al, telefonundan tek tıkla gönder (ban riski yok)" />
+      <PageHeader baslik="WhatsApp Gönderim Listesi" aciklama="AI mesajı + AI'nın bulduğu taşeron numaraları tek e-postada — telefonundan tek tıkla gönder (ban riski yok)" />
 
       <Card className="mb-6"><CardBody className="flex gap-3">
         <Info size={18} className="text-marka-500 shrink-0 mt-0.5" />
-        <p className="text-sm text-metin-yum">WhatsApp otomatik toplu gönderimi numarayı kısıtlattığı için kapalı. Bunun yerine: panel sana <b>hazır mesaj + numara listesini</b> e-posta atar; e-postadaki yeşil butona tıklayınca WhatsApp <b>mesaj hazır</b> açılır, sen <b>gönder</b>'e basarsın. Elle gönderdiğin için güvenlidir.</p>
+        <p className="text-sm text-metin-yum">Otomatik toplu gönderim numarayı kısıtlattığı için kapalı. Bunun yerine panel sana <b>AI mesajı + bulunan taşeron numaralarını</b> e-posta atar; e-postadaki yeşil butona tıklayınca WhatsApp <b>mesaj hazır</b> açılır, sen <b>gönder</b>'e basarsın. Elle gönderdiğin için güvenlidir.</p>
       </CardBody></Card>
 
       {/* ADIM 1 — Mesaj */}
@@ -78,12 +106,45 @@ export default function Whatsapp() {
         <Field label="Gönderilecek WhatsApp mesajı (düzenleyebilirsin)"><Textarea value={mesaj} onChange={(e) => setMesaj(e.target.value)} className="min-h-[140px] text-sm" placeholder="Buraya kendi mesajını da yazabilirsin." /></Field>
       </CardBody></Card>
 
-      {/* ADIM 2 — Numaralar */}
-      <Card className="mb-6"><CardBody className="space-y-3">
-        <p className="font-semibold text-metin flex items-center gap-2">{adimNo('2')} Numaraları yapıştır</p>
-        <p className="text-xs text-metin-yum">Her satıra bir numara (veya virgülle ayır). Örn: 0532 123 45 67</p>
-        <Textarea value={numaralar} onChange={(e) => setNumaralar(e.target.value)} className="min-h-[160px] text-sm font-mono" placeholder={"0532 123 45 67\n0541 234 56 78\n0505 345 67 89"} />
-        <p className="text-sm text-metin-yum flex items-center gap-1.5"><ListPlus size={15} /> <b>{numaraSayisi}</b> geçerli numara algılandı.</p>
+      {/* ADIM 2 — AI ile taşeron bul */}
+      <Card className="mb-6"><CardBody className="space-y-4">
+        <p className="font-semibold text-metin flex items-center gap-2">{adimNo('2')} AI ile taşeron bul</p>
+        <div className="flex flex-wrap gap-1.5">
+          {['İstanbul Avrupa Yakası / Arnavutköy', 'İstanbul Avrupa Yakası', 'İstanbul Anadolu Yakası', 'İstanbul (geneli)', 'Türkiye geneli'].map((b) => (
+            <button key={b} type="button" onClick={() => setBolge(b)} className={`px-2.5 py-1 rounded-lg text-xs border transition cursor-pointer ${bolge === b ? 'bg-marka-500 text-white border-marka-500' : 'bg-white border-cizgi text-metin-yum hover:border-marka-300'}`}>{b}</button>
+          ))}
+        </div>
+        <div className="flex items-end gap-3 flex-wrap">
+          <div className="flex-1 min-w-[200px]"><Field label="Bölge"><Input value={bolge} onChange={(e) => setBolge(e.target.value)} /></Field></div>
+          <Button onClick={firmaAra} disabled={ariyor}>{ariyor ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />} "{kategori}" için taşeron bul</Button>
+        </div>
+        {ariyor && <p className="text-sm text-metin-yum flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Telefonlu taşeronlar araştırılıyor… (1-2 dk)</p>}
+
+        {firmalar.length > 0 && (
+          <>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex gap-2 flex-wrap"><Badge tone="mavi">{telefonlu.length} telefonlu firma</Badge><Badge tone="yesil">{seciliFirmalar.length} seçili</Badge></div>
+              <Button size="sm" variant="ghost" onClick={tumunuSec} disabled={telefonlu.length === 0}>{telefonlu.every((f) => secili[f.telefon!]) && telefonlu.length > 0 ? 'Seçimi kaldır' : 'Tümünü seç'}</Button>
+            </div>
+            <div className="space-y-1">
+              {telefonlu.map((f, i) => {
+                const sec = !!secili[f.telefon!];
+                return (
+                  <button key={i} onClick={() => setSecili((s) => ({ ...s, [f.telefon!]: !sec }))} className="w-full text-left flex items-center gap-2.5 border-b border-cizgi/60 py-2 px-1 rounded-lg hover:bg-zemin cursor-pointer">
+                    {sec ? <CheckSquare size={17} className="text-marka-500 shrink-0" /> : <Square size={17} className="text-metin-yum shrink-0" />}
+                    <div className="text-sm min-w-0 flex-1"><span className="inline-flex items-center gap-1"><Building size={13} className="text-metin-yum" /> <b>{f.ad}</b></span> <span className="text-metin-yum"> · <Phone size={12} className="inline" /> {f.telefon}</span></div>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        <details className="text-sm">
+          <summary className="cursor-pointer text-metin-yum">Elle numara da eklemek istersen (opsiyonel)</summary>
+          <Textarea value={manuel} onChange={(e) => setManuel(e.target.value)} className="min-h-[90px] text-sm font-mono mt-2" placeholder={"0532 123 45 67\n0541 234 56 78"} />
+          {manuelSayi > 0 && <p className="text-xs text-metin-yum mt-1"><ListPlus size={13} className="inline" /> {manuelSayi} manuel numara</p>}
+        </details>
       </CardBody></Card>
 
       {/* ADIM 3 — Gönder */}
@@ -91,10 +152,10 @@ export default function Whatsapp() {
         <p className="font-semibold text-metin flex items-center gap-2">{adimNo('3')} Listeyi e-posta olarak al</p>
         <div className="flex items-end gap-3 flex-wrap">
           <div className="flex-1 min-w-[220px]"><Field label="E-posta adresi"><Input value={hedefMail} onChange={(e) => setHedefMail(e.target.value)} /></Field></div>
-          <Button onClick={listeyiGonder} disabled={gonderiliyor || !mesaj.trim() || numaraSayisi === 0}>{gonderiliyor ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />} {numaraSayisi} numarayı e-postama gönder</Button>
+          <Button onClick={listeyiGonder} disabled={gonderiliyor || !mesaj.trim() || toplamHedef === 0}>{gonderiliyor ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />} {toplamHedef} firmayı e-postama gönder</Button>
         </div>
         {sonuc && <p className="text-sm text-emerald-700 flex items-start gap-1.5 bg-emerald-50 border border-emerald-100 rounded-xl p-3"><CheckCircle2 size={16} className="shrink-0 mt-0.5" /> {sonuc}</p>}
-        <p className="text-xs text-metin-yum flex items-center gap-1.5"><Send size={12} /> E-postayı <b>telefonundan</b> açarsan, yeşil butona tıklayınca WhatsApp doğrudan açılır. Numaralar arasında biraz bekleyerek gönder.</p>
+        <p className="text-xs text-metin-yum flex items-center gap-1.5"><Send size={12} /> E-postayı <b>telefonundan</b> aç → yeşil butona tıkla → WhatsApp mesaj hazır açılır. Numaralar arasında biraz bekleyerek gönder.</p>
       </CardBody></Card>
     </>
   );
