@@ -12,6 +12,10 @@ import { tmpdir } from 'os';
 
 dotenv.config();
 
+// Panel asla komple çökmesin — beklenmedik hataları logla, süreci öldürme.
+process.on('uncaughtException', (e) => console.error('uncaughtException:', e?.message || e));
+process.on('unhandledRejection', (e) => console.error('unhandledRejection:', e?.message || e));
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 8080;
 const KEY = process.env.OPENROUTER_API_KEY;
@@ -300,6 +304,7 @@ app.get('/api/mail/gelenler', async (req, res) => {
   const limit = Math.min(Number(req.query.limit || 8), 20);
   try {
     const client = new ImapFlow({ host: MAIL_IMAP, port: 993, secure: true, auth: { user: MAIL_USER, pass: MAIL_PASS }, logger: false });
+    client.on('error', (e) => console.error('IMAP error:', e?.message || e));
     await client.connect();
     const emails = [];
     const lock = await client.getMailboxLock('INBOX');
