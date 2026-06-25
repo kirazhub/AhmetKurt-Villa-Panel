@@ -11,6 +11,7 @@ import Takvim from './pages/Takvim';
 import Rehber from './pages/Rehber';
 import AsistanAI from './pages/AsistanAI';
 import Raporlar from './pages/Raporlar';
+import Ogrenme from './pages/Ogrenme';
 import SahaKaydi from './pages/SahaKaydi';
 import IstekListesi from './pages/IstekListesi';
 import Proje from './pages/Proje';
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="/istek-listesi" element={<IstekListesi />} />
         <Route path="/rehber" element={<Rehber />} />
         <Route path="/asistan" element={<AsistanAI />} />
+        <Route path="/ogrenme" element={<Ogrenme />} />
         <Route path="/raporlar" element={<Raporlar />} />
         <Route path="/is-takibi" element={<IsTakibi />} />
         <Route path="/saha-kaydi" element={<SahaKaydi />} />

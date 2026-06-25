@@ -209,3 +209,25 @@ export const ISTEK_KATEGORILERI = [
   'Ekip & Makine',
   'Tedarikçi & Fiyat',
 ] as const;
+
+// ============================================================================
+// ÖĞRENME HAFIZASI — Dersler (hata/doğru iş/genel). AI bunları sonraki
+// kararlarda hatırlar (bağlama eklenir).
+// ============================================================================
+
+export type DersTur = 'hata' | 'dogru' | 'genel';
+
+export const DERS_ETIKET: Record<DersTur, string> = {
+  hata: 'Hatadan Ders', dogru: 'Doğru İş', genel: 'Genel Bilgi',
+};
+
+export interface Ders {
+  id: string;
+  tarih: string;          // ISO
+  tur: DersTur;
+  baslik: string;
+  icerik: string;
+  fazId?: string;
+  taseronId?: string;
+  kaynak: 'kullanici' | 'ai';
+}

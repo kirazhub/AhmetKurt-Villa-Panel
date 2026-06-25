@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Faz, Mahal, IsKalemi, Taseron, Teklif, Odeme, Belge, Proje, SahaGunluk, Sarfiyat, IstekKalemi } from '../types';
+import type { Faz, Mahal, IsKalemi, Taseron, Teklif, Odeme, Belge, Proje, SahaGunluk, Sarfiyat, IstekKalemi, Ders } from '../types';
 import { PROJE, FAZLAR, MAHALLER, IS_KALEMLERI, ISTEK_LISTESI } from '../data/seed';
 import { uid } from '../lib/format';
 
@@ -23,6 +23,7 @@ interface State {
   sarfiyatlar: Sarfiyat[];
   istekListesi: IstekKalemi[];
   istekBrifing: string;    // AI'nın "ihtiyacım olanlar" üst metni
+  dersler: Ders[];         // öğrenme hafızası (hata/doğru iş/genel)
   rehberBrifing: Record<string, string>; // rehber bölüm id -> AI brifing metni (önbellek)
 
   // İş kalemleri
@@ -67,6 +68,10 @@ interface State {
   istekEkle: (k: Omit<IstekKalemi, 'id'>) => string;
   istekSil: (id: string) => void;
   istekBrifingKaydet: (metin: string) => void;
+
+  // Öğrenme hafızası
+  dersEkle: (d: Omit<Ders, 'id'>) => string;
+  dersSil: (id: string) => void;
   // Proje künyesi
   projeGuncelle: (patch: Partial<Proje>) => void;
   // Bakım
@@ -90,6 +95,7 @@ export const useStore = create<State>()(
       sarfiyatlar: [],
       istekListesi: ISTEK_LISTESI,
       istekBrifing: '',
+      dersler: [],
       rehberBrifing: {},
 
       isKalemiEkle: (k) => {
@@ -196,17 +202,25 @@ export const useStore = create<State>()(
         set((s) => ({ istekListesi: s.istekListesi.filter((x) => x.id !== id) })),
       istekBrifingKaydet: (metin) => set({ istekBrifing: metin }),
 
+      dersEkle: (d) => {
+        const id = uid('drs');
+        set((s) => ({ dersler: [...s.dersler, { ...d, id }] }));
+        return id;
+      },
+      dersSil: (id) =>
+        set((s) => ({ dersler: s.dersler.filter((x) => x.id !== id) })),
+
       projeGuncelle: (patch) => set((s) => ({ proje: { ...s.proje, ...patch } })),
       sifirla: () =>
         set({
           proje: PROJE, fazlar: FAZLAR, mahaller: MAHALLER, isKalemleri: IS_KALEMLERI,
           taseronlar: [], teklifler: [], odemeler: [], belgeler: [], sahaGunlukleri: [], sarfiyatlar: [], rehberBrifing: {},
-          istekListesi: ISTEK_LISTESI, istekBrifing: '',
+          istekListesi: ISTEK_LISTESI, istekBrifing: '', dersler: [],
         }),
 
       disaAktar: () => {
-        const { proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler, sahaGunlukleri, sarfiyatlar, istekListesi, istekBrifing, rehberBrifing } = get();
-        return JSON.stringify({ proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler, sahaGunlukleri, sarfiyatlar, istekListesi, istekBrifing, rehberBrifing }, null, 2);
+        const { proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler, sahaGunlukleri, sarfiyatlar, istekListesi, istekBrifing, rehberBrifing, dersler } = get();
+        return JSON.stringify({ proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler, sahaGunlukleri, sarfiyatlar, istekListesi, istekBrifing, rehberBrifing, dersler }, null, 2);
       },
       iceAktar: (json) => {
         try {
@@ -225,6 +239,7 @@ export const useStore = create<State>()(
             istekListesi: d.istekListesi ?? ISTEK_LISTESI,
             istekBrifing: d.istekBrifing ?? '',
             rehberBrifing: d.rehberBrifing ?? {},
+            dersler: d.dersler ?? [],
           });
           return true;
         } catch {

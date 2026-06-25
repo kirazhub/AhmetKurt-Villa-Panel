@@ -60,6 +60,7 @@ export default function Raporlar() {
       const odenen = taseronOdemeToplam(s.odemeler, t.id);
       return `  - ${t.ad}${t.firma ? ' (' + t.firma + ')' : ''} [${t.uzmanlik}]: ${isler.length} iş, ${tamam} bitti, ${gec} geciken, planlanan ${tl(planT)}, ödenen ${tl(odenen)}${t.performans ? ', not ' + t.performans + '/5' : ''}`;
     }).join('\n') || '  (taşeron atanmamış)';
+    const dersSatir = s.dersler.length ? s.dersler.slice(-15).map((d) => `  - [${d.tur}] ${d.baslik}: ${d.icerik}`).join('\n') : '  (henüz ders yok)';
     return `TARİH: ${tarih(bugun())}
 GENEL İLERLEME: %${Math.round(genelIlerleme(s.isKalemleri))}
 BÜTÇE: planlanan ${tl(plan)}, gerçekleşen ${tl(ger)}, fark ${tl(plan - ger)}
@@ -72,7 +73,9 @@ ${taseronSatir}
 SON SAHA KAYITLARI:
 ${sahaSon}
 MALZEME SARFİYATI (toplam ${tl(sarfToplam)}):
-${malzemeOzet}`;
+${malzemeOzet}
+ÖĞRENİLEN DERSLER (hatırla ve kullan):
+${dersSatir}`;
   };
 
   const uret = async (r: typeof RAPORLAR[number]) => {

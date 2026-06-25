@@ -20,7 +20,7 @@ const HIZLI = [
 
 // AI'ya gönderilecek anlık panel özeti
 function baglamKur(s: ReturnType<typeof useStore.getState>): string {
-  const { proje, fazlar, isKalemleri, taseronlar, odemeler } = s;
+  const { proje, fazlar, isKalemleri, taseronlar, odemeler, dersler } = s;
   const plan = toplamPlanlanan(isKalemleri);
   const ger = toplamGerceklesen(isKalemleri);
   const ilerleme = Math.round(genelIlerleme(isKalemleri));
@@ -29,6 +29,9 @@ function baglamKur(s: ReturnType<typeof useStore.getState>): string {
     const oz = fazOzet(isKalemleri.filter((k) => k.fazId === f.id));
     return `  - ${f.ad}: %${Math.round(oz.ilerleme)} (${oz.tamamlanan}/${oz.toplam} iş bitti)`;
   }).join('\n');
+  const dersSatir = dersler.length
+    ? dersler.slice(-15).map((d) => `  - [${d.tur}] ${d.baslik}: ${d.icerik}`).join('\n')
+    : '  (henüz ders yok)';
   return `PROJE: ${proje.ad} — ${proje.konum}
 GENEL İLERLEME: %${ilerleme}
 BÜTÇE: planlanan ${tl(plan)}, gerçekleşen ${tl(ger)}, fark ${tl(plan - ger)}
@@ -36,7 +39,9 @@ TAŞERON SAYISI: ${taseronlar.length}
 TOPLAM ÖDENEN: ${tl(odemeler.reduce((t, o) => t + o.tutar, 0))}
 GECİKEN İŞ: ${geciken.length ? geciken.map((g) => g.ad).join(', ') : 'yok'}
 FAZ DURUMLARI:
-${fazSatir}`;
+${fazSatir}
+ÖĞRENİLEN DERSLER (hatırla ve kararlarında kullan):
+${dersSatir}`;
 }
 
 // AI metnini basitçe biçimle (kalın **..** ve satırlar)
