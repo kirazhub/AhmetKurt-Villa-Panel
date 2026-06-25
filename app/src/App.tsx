@@ -10,6 +10,7 @@ import Butce from './pages/Butce';
 import Odemeler from './pages/Odemeler';
 import Teklifler from './pages/Teklifler';
 import Belgeler from './pages/Belgeler';
+import Specler from './pages/Specler';
 import Takvim from './pages/Takvim';
 import Rehber from './pages/Rehber';
 import AsistanAI from './pages/AsistanAI';
@@ -76,6 +77,7 @@ export default function App() {
         <Route path="/teklif-toplama" element={<TeklifToplama />} />
         <Route path="/whatsapp" element={<Whatsapp />} />
         <Route path="/belgeler" element={<Belgeler />} />
+        <Route path="/specler" element={<Specler />} />
         <Route path="/heic" element={<HeicDonustur />} />
         <Route path="/takvim" element={<Takvim />} />
         <Route path="/proje" element={<Proje />} />

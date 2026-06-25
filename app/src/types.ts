@@ -103,6 +103,8 @@ export interface Belge {
   url?: string;              // veya dış URL
   tarih: string;             // ISO
   notlar?: string;
+  spec?: string;             // AI'nın belgeden çıkardığı teknik detaylar (m², ölçü, kot...)
+  specTarih?: string;        // spec'in çıkarıldığı tarih (ISO)
 }
 
 /** Proje künyesi (sabit bilgiler) */

@@ -110,6 +110,55 @@ app.get('/api/ai/health', (_req, res) => {
   res.json({ ok: true, yapilandirilmis: yapilandirilmis(), saglayici: 'openrouter' });
 });
 
+// Görsel (vision) destekli çağrı — belge/plan/fotoğraf okuma
+async function claudeVision(systemMetin, metin, gorselUrl, maxTokens) {
+  const model = await modelSec();
+  const r = await fetch(`${API}/chat/completions`, {
+    method: 'POST',
+    headers: HEADERS(),
+    body: JSON.stringify({
+      model, max_tokens: maxTokens,
+      messages: [
+        { role: 'system', content: systemMetin },
+        { role: 'user', content: [
+          { type: 'text', text: metin },
+          { type: 'image_url', image_url: { url: gorselUrl } },
+        ] },
+      ],
+    }),
+  });
+  const d = await r.json();
+  if (!r.ok) throw { status: r.status, detay: d };
+  return { metin: d.choices?.[0]?.message?.content?.trim() || '', model };
+}
+
+// --- Belgeden teknik spec çıkar (m², ölçü, kot, malzeme...) ---
+app.post('/api/ai/belge-spec', async (req, res) => {
+  if (!yapilandirilmis()) return res.status(503).json({ hata: 'OpenRouter API anahtarı tanımlı değil (.env).' });
+  try {
+    const { ad = '', gorsel = '' } = req.body || {};
+    if (!gorsel || !String(gorsel).startsWith('data:image')) return res.status(400).json({ hata: 'Geçerli bir görsel (dataURL) gerekli' });
+    const sys = `Sen kıdemli bir mimari/inşaat belge analiz uzmanısın. Sana verilen görsel; mimari kat planı, görünüş, kesit, ölçü kağıdı, vaziyet planı, teknik çizim, fatura veya şantiye fotoğrafı olabilir. Görseldeki TÜM teknik bilgiyi eksiksiz, dürüst ve düzenli çıkar. Sadece görselde GERÇEKTEN görünen/yazan bilgiyi yaz; tahmin/uydurma YAPMA. Okunamayan yeri "okunamadı" diye belirt. Tümü Türkçe.`;
+    const istem = `Belge: "${ad}"
+
+Bu görseli incele ve içindeki tüm teknik detayları başlıklar altında madde madde yaz:
+
+**Ölçüler**: tüm uzunluk/en/boy/yükseklik değerleri (cm/m), aks aralıkları.
+**Alanlar (m²)**: her oda/mahal/kat ayrı ayrı; toplam alan varsa.
+**Kotlar / Seviyeler**: kat kotları, ±0.00, seviye farkları, eğim.
+**Mahal listesi**: oda/mekân isimleri ve numaraları.
+**Kapı / Pencere**: ölçüleri, adetleri, tipleri.
+**Malzeme & yapı notları**: beton sınıfı, donatı, duvar/yalıtım kalınlıkları, kaplama vb.
+**Diğer rakam ve notlar**: görselde yazan başka her teknik değer/açıklama.
+
+Görselde olmayan başlığı atla. Kısa girizgâh yazma, doğrudan başlıklarla başla.`;
+    const { metin } = await claudeVision(sys, istem, gorsel, 2800);
+    res.json({ spec: metin });
+  } catch (e) {
+    res.status(e.status || 500).json({ hata: 'Belge analizi başarısız', detay: e.detay || String(e?.message || e) });
+  }
+});
+
 // --- Sohbet ---
 app.post('/api/ai/chat', async (req, res) => {
   if (!yapilandirilmis()) return res.status(503).json({ hata: 'OpenRouter API anahtarı tanımlı değil (.env).' });
