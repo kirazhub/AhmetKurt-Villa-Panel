@@ -65,6 +65,15 @@ export async function baslat(veriDir) {
       }
       gelenYaz(gelen);
     });
+    // TEŞHİS: giden mesaj teslim durumu (1=beklemede 2=sunucuya ulaştı 3=karşıya teslim 4=okundu)
+    sock.ev.on('messages.update', (updates) => {
+      for (const u of updates) {
+        if (u.update && u.update.status != null) console.log('WA-ACK', u.key?.remoteJid, 'status=', u.update.status);
+      }
+    });
+    sock.ev.on('message-receipt.update', (updates) => {
+      for (const u of updates) console.log('WA-RECEIPT', u.key?.remoteJid, JSON.stringify(u.receipt || {}).slice(0, 120));
+    });
   } catch (e) {
     baslatildi = false;
     console.error('WA baslat hata:', e?.message || e);
@@ -96,6 +105,7 @@ export async function gonder(numara, mesaj, gorseller) {
   if (imgs.length === 0) {
     const sent = await sock.sendMessage(jid, { text: mesaj });
     if (sent?.key?.id && sent.message) mesajSakla(sent.key.id, sent.message);
+    console.log('WA-GONDER', jid, 'id=', sent?.key?.id, 'status=', sent?.status);
   } else {
     for (let i = 0; i < imgs.length; i++) {
       const sent = await sock.sendMessage(jid, i === 0 ? { image: imgs[i], caption: mesaj || '' } : { image: imgs[i] });
