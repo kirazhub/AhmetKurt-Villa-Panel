@@ -15,6 +15,15 @@ let baslatildi = false;
 let veriYolu = '';
 const logger = pino({ level: 'silent' });
 
+// Gönderilen/gelen mesajları kısa süre saklarız; karşı taraf "tekrar gönder" (retry) isterse
+// Baileys orijinal mesajı buradan alıp yeniden şifreler → mesaj karşıya GERÇEKTEN ulaşır.
+const mesajDeposu = new Map(); // id -> message (proto)
+function mesajSakla(id, message) {
+  if (!id || !message) return;
+  mesajDeposu.set(id, message);
+  if (mesajDeposu.size > 1000) { const ilk = mesajDeposu.keys().next().value; mesajDeposu.delete(ilk); }
+}
+
 function gelenOku() { try { return JSON.parse(readFileSync(join(veriYolu, 'wa-gelen.json'), 'utf8')); } catch { return []; } }
 function gelenYaz(arr) { try { writeFileSync(join(veriYolu, 'wa-gelen.json'), JSON.stringify(arr.slice(0, 300), null, 2)); } catch { /**/ } }
 
@@ -26,7 +35,12 @@ export async function baslat(veriDir) {
     const { state, saveCreds } = await useMultiFileAuthState(join(veriDir, 'wa-auth'));
     let version;
     try { const r = await fetchLatestBaileysVersion(); version = r.version; } catch { /* varsayılan */ }
-    sock = makeWASocket({ auth: state, version, printQRInTerminal: false, logger, browser: Browsers.appropriate('Chrome'), syncFullHistory: false });
+    sock = makeWASocket({
+      auth: state, version, printQRInTerminal: false, logger,
+      browser: Browsers.appropriate('Chrome'), syncFullHistory: false, markOnlineOnConnect: true,
+      // KRİTİK: retry isteklerinde orijinal mesajı sağlar; olmazsa başkalarına mesaj iletilmez.
+      getMessage: async (key) => { const m = mesajDeposu.get(key?.id); return m || undefined; },
+    });
     sock.ev.on('creds.update', saveCreds);
     sock.ev.on('connection.update', async (u) => {
       const { connection, lastDisconnect, qr } = u;
@@ -40,6 +54,8 @@ export async function baslat(veriDir) {
       }
     });
     sock.ev.on('messages.upsert', ({ messages, type }) => {
+      // Tüm mesajları (giden+gelen) retry için depola
+      for (const m of messages) { if (m.key?.id && m.message) mesajSakla(m.key.id, m.message); }
       if (type !== 'notify') return;
       const gelen = gelenOku();
       for (const m of messages) {
@@ -78,10 +94,12 @@ export async function gonder(numara, mesaj, gorseller) {
   }
   const imgs = (Array.isArray(gorseller) ? gorseller : []).map(dataUrlToBuffer).filter(Boolean);
   if (imgs.length === 0) {
-    await sock.sendMessage(jid, { text: mesaj });
+    const sent = await sock.sendMessage(jid, { text: mesaj });
+    if (sent?.key?.id && sent.message) mesajSakla(sent.key.id, sent.message);
   } else {
     for (let i = 0; i < imgs.length; i++) {
-      await sock.sendMessage(jid, i === 0 ? { image: imgs[i], caption: mesaj || '' } : { image: imgs[i] });
+      const sent = await sock.sendMessage(jid, i === 0 ? { image: imgs[i], caption: mesaj || '' } : { image: imgs[i] });
+      if (sent?.key?.id && sent.message) mesajSakla(sent.key.id, sent.message);
       if (i < imgs.length - 1) await new Promise((r) => setTimeout(r, 700));
     }
   }
