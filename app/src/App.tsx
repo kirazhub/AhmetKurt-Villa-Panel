@@ -11,6 +11,7 @@ import Odemeler from './pages/Odemeler';
 import Teklifler from './pages/Teklifler';
 import Belgeler from './pages/Belgeler';
 import Specler from './pages/Specler';
+import MaliyetRaporu from './pages/MaliyetRaporu';
 import OtomatikSpec from './components/OtomatikSpec';
 import Takvim from './pages/Takvim';
 import Rehber from './pages/Rehber';
@@ -80,6 +81,7 @@ export default function App() {
         <Route path="/whatsapp" element={<Whatsapp />} />
         <Route path="/belgeler" element={<Belgeler />} />
         <Route path="/specler" element={<Specler />} />
+        <Route path="/maliyet-raporu" element={<MaliyetRaporu />} />
         <Route path="/heic" element={<HeicDonustur />} />
         <Route path="/takvim" element={<Takvim />} />
         <Route path="/proje" element={<Proje />} />

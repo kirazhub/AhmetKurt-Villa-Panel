@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, ListChecks, HardHat, Wallet, Receipt,
-  GitCompareArrows, Images, CalendarClock, Building2, Menu, X, BookOpenText, Bot, FileBarChart, Truck, ClipboardList, Brain, MessagesSquare, ImageDown, Mailbox, MessageCircle, Ruler,
+  GitCompareArrows, Images, CalendarClock, Building2, Menu, X, BookOpenText, Bot, FileBarChart, Truck, ClipboardList, Brain, MessagesSquare, ImageDown, Mailbox, MessageCircle, Ruler, Calculator,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useStore } from '../store/useStore';
@@ -25,6 +25,7 @@ export const NAV = [
   { to: '/whatsapp', ad: 'WhatsApp', ikon: MessageCircle },
   { to: '/belgeler', ad: 'Foto & Belge', ikon: Images },
   { to: '/specler', ad: 'Teknik Specler', ikon: Ruler },
+  { to: '/maliyet-raporu', ad: 'Maliyet Raporu', ikon: Calculator },
   { to: '/heic', ad: 'HEIC → JPG', ikon: ImageDown },
   { to: '/takvim', ad: 'Takvim / Termin', ikon: CalendarClock },
   { to: '/proje', ad: 'Proje Künyesi', ikon: Building2 },

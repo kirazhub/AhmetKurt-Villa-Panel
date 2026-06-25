@@ -159,6 +159,54 @@ Görselde olmayan başlığı atla. Kısa girizgâh yazma, doğrudan başlıklar
   }
 });
 
+// JSON ayıkla (model bazen ```json sarmalı ekler)
+function jsonAyikla(metin) {
+  if (!metin) return null;
+  let t = String(metin).trim();
+  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) t = fence[1].trim();
+  const ilk = t.indexOf('{'); const son = t.lastIndexOf('}');
+  if (ilk === -1 || son === -1) return null;
+  try { return JSON.parse(t.slice(ilk, son + 1)); } catch { return null; }
+}
+
+// --- Maliyet / bütçe raporu (3 senaryolu malzeme + fiyat tahmini) ---
+app.post('/api/ai/maliyet-raporu', async (req, res) => {
+  if (!yapilandirilmis()) return res.status(503).json({ hata: 'OpenRouter API anahtarı tanımlı değil (.env).' });
+  try {
+    const { specler = '', proje = '', baglam = '' } = req.body || {};
+    const sys = `Sen Türkiye'de (özellikle İstanbul) çalışan, lüks villa/konut maliyetlerini ezbere bilen kıdemli bir inşaat keşif-metraj ve satın alma maliyet uzmanısın. Görevin: verilen proje bilgilerinden ve belgelerden çıkarılmış teknik spec'lerden, kapsamlı bir MALZEME + MALİYET raporu üretmek.
+
+KURALLAR:
+- Her malzeme kalemi için ÜÇ fiyat varyasyonu ver: "ekonomik", "orta", "premium". Her biri için örnek ürün/marka (Vitra, Artema, Eca, Reca, Bosch, Schneider, Legrand, Türk yapı marketleri, Trendyol vb. piyasadan), tahmini BİRİM fiyat ve TOPLAM (= birim × miktar).
+- Fiyatlar GÜNCEL TÜRKİYE PİYASASI tahmini (TL). Dürüst ol: bunlar tahmindir, kesin teklif firmadan alınır. Abartma, uçuk rakam verme.
+- Elektrik (kablo metresi, priz/anahtar adedi, pano, aydınlatma), mekanik/tesisat (boru, batarya/musluk, klozet/lavabo, kombi/kazan, radyatör/yerden ısıtma), kaba yapı (beton m³, donatı ton, tuğla), ince işler (şap, sıva, boya, seramik/parke m²), cephe, doğrama (kapı/pencere), mutfak/banyo, havuz, peyzaj gibi MANTIKLI kategorilere ayır. Sadece veri/proje destekliyorsa kategori aç; eksik veriyi proje büyüklüğünden makul tahminle, "not" alanında belirterek doldur.
+- Miktarları spec'lerdeki m², ölçü ve kotlardan türet; yoksa villa büyüklüğüne (1.142 m²) göre tahmin et ve "not"a "tahmini" yaz.
+- ÇIKTI SADECE GEÇERLİ JSON. Markdown yok, açıklama yok. Sayılar SADE sayı olsun (TL, ondalıksız, binlik ayraç YOK).
+
+JSON ŞEMASI:
+{"ozet":"2-3 cümle genel değerlendirme","paraBirimi":"TL","senaryolar":{"ekonomik":<toplamTL>,"orta":<toplamTL>,"premium":<toplamTL>},"kategoriler":[{"ad":"Elektrik Tesisatı","kalemler":[{"malzeme":"NYA Kablo 3x2.5mm²","miktar":"1200 m","not":"tahmini","ekonomik":{"urun":"...","marka":"...","birim":35,"toplam":42000},"orta":{...},"premium":{...}}],"altToplam":{"ekonomik":0,"orta":0,"premium":0}}],"uyarilar":["..."]}
+
+Kapsamlı ol: 6-10 kategori, her kategoride 5-12 önemli kalem. Toplamlar tutarlı olsun (kalemlerin toplamı = altToplam, altToplamların toplamı = senaryolar).`;
+    const istem = `PROJE KÜNYESİ:
+${proje || '(verilmedi)'}
+
+PANEL DURUMU / EK BAĞLAM:
+${baglam || '(yok)'}
+
+BELGELERDEN ÇIKARILMIŞ TEKNİK SPEC'LER:
+${specler || '(henüz teknik spec yok — proje büyüklüğüne göre tahmin et ve uyarılarda belirt)'}
+
+Yukarıdaki verilere dayanarak şemaya UYGUN, kapsamlı, 3 senaryolu maliyet raporunu SADECE JSON olarak üret.`;
+    const { metin, model } = await claude(sys, [{ role: 'user', icerik: istem }], 8000);
+    const rapor = jsonAyikla(metin);
+    if (!rapor || !Array.isArray(rapor.kategoriler)) return res.status(502).json({ hata: 'AI geçerli rapor üretemedi, tekrar dene', ham: String(metin).slice(0, 400) });
+    res.json({ rapor, model });
+  } catch (e) {
+    res.status(e.status || 500).json({ hata: 'Rapor üretilemedi', detay: e.detay || String(e?.message || e) });
+  }
+});
+
 // --- Sohbet ---
 app.post('/api/ai/chat', async (req, res) => {
   if (!yapilandirilmis()) return res.status(503).json({ hata: 'OpenRouter API anahtarı tanımlı değil (.env).' });

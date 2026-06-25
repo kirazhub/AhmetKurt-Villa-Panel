@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Faz, Mahal, IsKalemi, Taseron, Teklif, Odeme, Belge, Proje, SahaGunluk, Sarfiyat, IstekKalemi, Ders, Danisma, Firma, RfqKayit, GonderenProfil } from '../types';
+import type { Faz, Mahal, IsKalemi, Taseron, Teklif, Odeme, Belge, Proje, SahaGunluk, Sarfiyat, IstekKalemi, Ders, Danisma, Firma, RfqKayit, GonderenProfil, MaliyetRaporu } from '../types';
 import { PROJE, FAZLAR, MAHALLER, IS_KALEMLERI, ISTEK_LISTESI } from '../data/seed';
 import { uid } from '../lib/format';
 
@@ -29,6 +29,7 @@ interface State {
   rfqKayitlari: RfqKayit[];// gönderilen teklif istekleri
   gonderenProfil: GonderenProfil; // teklif maili imzası
   rehberBrifing: Record<string, string>; // rehber bölüm id -> AI brifing metni (önbellek)
+  maliyetRaporu: MaliyetRaporu | null; // AI'nın ürettiği 3 senaryolu maliyet raporu
 
   // İş kalemleri
   isKalemiEkle: (k: Omit<IsKalemi, 'id'>) => string;
@@ -55,6 +56,9 @@ interface State {
   belgeEkle: (b: Omit<Belge, 'id'>) => string;
   belgeGuncelle: (id: string, patch: Partial<Belge>) => void;
   belgeSil: (id: string) => void;
+
+  // Maliyet raporu
+  maliyetRaporuKaydet: (r: MaliyetRaporu | null) => void;
 
   // Saha takibi
   sahaEkle: (g: Omit<SahaGunluk, 'id'>) => string;
@@ -115,6 +119,7 @@ export const useStore = create<State>()(
       rfqKayitlari: [],
       gonderenProfil: { ad: 'Kiraz Kurt', unvan: 'Satın Alma ve Koordinasyon Müdürü', telefon: '' },
       rehberBrifing: {},
+      maliyetRaporu: null,
 
       isKalemiEkle: (k) => {
         const id = uid('ik');
@@ -177,6 +182,8 @@ export const useStore = create<State>()(
         set((s) => ({ belgeler: s.belgeler.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
       belgeSil: (id) =>
         set((s) => ({ belgeler: s.belgeler.filter((x) => x.id !== id) })),
+
+      maliyetRaporuKaydet: (r) => set(() => ({ maliyetRaporu: r })),
 
       sahaEkle: (g) => {
         const id = uid('sg');
@@ -250,14 +257,14 @@ export const useStore = create<State>()(
       sifirla: () =>
         set({
           proje: PROJE, fazlar: FAZLAR, mahaller: MAHALLER, isKalemleri: IS_KALEMLERI,
-          taseronlar: [], teklifler: [], odemeler: [], belgeler: [], sahaGunlukleri: [], sarfiyatlar: [], rehberBrifing: {},
+          taseronlar: [], teklifler: [], odemeler: [], belgeler: [], sahaGunlukleri: [], sarfiyatlar: [], rehberBrifing: {}, maliyetRaporu: null,
           istekListesi: ISTEK_LISTESI, istekBrifing: '', dersler: [], firmalar: [], rfqKayitlari: [],
           gonderenProfil: { ad: 'Kiraz Kurt', unvan: 'Satın Alma ve Koordinasyon Müdürü', telefon: '' },
         }),
 
       disaAktar: () => {
-        const { proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler, sahaGunlukleri, sarfiyatlar, istekListesi, istekBrifing, rehberBrifing, dersler, firmalar, rfqKayitlari, gonderenProfil } = get();
-        return JSON.stringify({ proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler, sahaGunlukleri, sarfiyatlar, istekListesi, istekBrifing, rehberBrifing, dersler, firmalar, rfqKayitlari, gonderenProfil }, null, 2);
+        const { proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler, sahaGunlukleri, sarfiyatlar, istekListesi, istekBrifing, rehberBrifing, maliyetRaporu, dersler, firmalar, rfqKayitlari, gonderenProfil } = get();
+        return JSON.stringify({ proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler, sahaGunlukleri, sarfiyatlar, istekListesi, istekBrifing, rehberBrifing, maliyetRaporu, dersler, firmalar, rfqKayitlari, gonderenProfil }, null, 2);
       },
       iceAktar: (json) => {
         try {
@@ -276,6 +283,7 @@ export const useStore = create<State>()(
             istekListesi: d.istekListesi ?? ISTEK_LISTESI,
             istekBrifing: d.istekBrifing ?? '',
             rehberBrifing: d.rehberBrifing ?? {},
+            maliyetRaporu: d.maliyetRaporu ?? null,
             dersler: d.dersler ?? [],
             firmalar: d.firmalar ?? [],
             rfqKayitlari: d.rfqKayitlari ?? [],

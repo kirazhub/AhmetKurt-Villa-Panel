@@ -108,6 +108,31 @@ export interface Belge {
   specDurum?: 'islendi' | 'hata' | 'atlandi'; // otomatik işleyici durumu (tekrar denememek için)
 }
 
+/** Maliyet / bütçe raporu (AI üretir, 3 senaryolu) */
+export interface MaliyetVaryasyon { urun?: string; marka?: string; birim?: number; toplam?: number; }
+export interface MaliyetKalem {
+  malzeme: string;
+  miktar?: string;
+  ekonomik?: MaliyetVaryasyon;
+  orta?: MaliyetVaryasyon;
+  premium?: MaliyetVaryasyon;
+  not?: string;
+}
+export interface MaliyetKategori {
+  ad: string;
+  kalemler: MaliyetKalem[];
+  altToplam?: { ekonomik?: number; orta?: number; premium?: number };
+}
+export interface MaliyetRaporu {
+  tarih: string;          // ISO
+  ozet?: string;
+  paraBirimi?: string;
+  senaryolar?: { ekonomik?: number; orta?: number; premium?: number };
+  kategoriler: MaliyetKategori[];
+  uyarilar?: string[];
+  kaynakSayisi?: number;  // kaç belge/spec dikkate alındı
+}
+
 /** Proje künyesi (sabit bilgiler) */
 export interface Proje {
   ad: string;
