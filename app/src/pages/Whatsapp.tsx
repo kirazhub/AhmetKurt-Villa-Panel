@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { MessageCircle, Loader2, Send, QrCode, CheckCircle2, RefreshCw, Inbox, LogOut, Search, Building, Sparkles, ChevronDown, ChevronUp, ImagePlus, X, Wand2 } from 'lucide-react';
+import { MessageCircle, Loader2, Send, QrCode, CheckCircle2, RefreshCw, Inbox, LogOut, Search, Building, Sparkles, ChevronDown, ChevronUp, ImagePlus, X, Wand2, Clock, StopCircle } from 'lucide-react';
 import { PageHeader, Card, CardBody, Button, Field, Input, Select, Textarea } from '../components/ui';
 import { useStore } from '../store/useStore';
 import { tarih } from '../lib/format';
@@ -7,7 +7,6 @@ import { TASERON_KATEGORILERI } from '../types';
 
 interface Gelen { from: string; isim?: string; text: string; tarih: string; }
 interface Firma { ad: string; email?: string; telefon?: string; web?: string; sehir?: string; }
-const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // Görseli tarayıcıda küçült (max 1280px, jpeg) — gönderim hafif olsun
 function resmiKucult(file: File): Promise<string> {
@@ -45,7 +44,8 @@ export default function Whatsapp() {
   const [aiYaziyor, setAiYaziyor] = useState(false);
   const [gorseller, setGorseller] = useState<string[]>([]);
   const [durumlar, setDurumlar] = useState<Record<string, 'ok' | 'hata' | 'gonderiliyor'>>({});
-  const [toplu, setToplu] = useState(false);
+  const [aralikDk, setAralikDk] = useState(5);
+  const [kuyruk, setKuyruk] = useState<{ aktif: boolean; bekleyen?: number; sonrakiSn?: number | null; gorselSayi?: number; items: { numara: string; durum: string }[] } | null>(null);
 
   // Manuel
   const [manuelAcik, setManuelAcik] = useState(false);
@@ -55,10 +55,11 @@ export default function Whatsapp() {
 
   const durumGetir = () => fetch('/api/wa/durum').then((r) => r.json()).then(setDurum).catch(() => setDurum({ baglandi: false, qr: null }));
   const gelenGetir = () => fetch('/api/wa/gelenler').then((r) => r.json()).then((d) => setGelenler(d.mesajlar || [])).catch(() => {});
+  const kuyrukGetir = () => fetch('/api/wa/kuyruk').then((r) => r.json()).then(setKuyruk).catch(() => {});
 
   useEffect(() => {
-    durumGetir(); gelenGetir();
-    timer.current = setInterval(() => { durumGetir(); gelenGetir(); }, 5000);
+    durumGetir(); gelenGetir(); kuyrukGetir();
+    timer.current = setInterval(() => { durumGetir(); gelenGetir(); kuyrukGetir(); }, 5000);
     return () => { if (timer.current) clearInterval(timer.current); };
   }, []);
 
@@ -102,13 +103,26 @@ export default function Whatsapp() {
     } catch { setDurumlar((s) => ({ ...s, [f.telefon!]: 'hata' })); return false; }
   };
 
-  const sirayalGonder = async () => {
-    const hedef = telefonlu.filter((f) => durumlar[f.telefon!] !== 'ok');
+  const kuyrukBaslat = async () => {
+    const hedef = telefonlu.filter((f) => kuyrukDurum(f) !== 'ok');
     if (hedef.length === 0) return;
-    if (!confirm(`${hedef.length} firmaya sırayla WhatsApp gönderilecek (numaranın banlanmaması için aralarında bekleme konur). Onaylıyor musun?`)) return;
-    setToplu(true);
-    for (const f of hedef) { await waGonder(f); await delay(6000 + Math.random() * 4000); }
-    setToplu(false);
+    if (!confirm(`${hedef.length} firmaya ~${aralikDk} dakika aralıkla (rastgele sapmayla) sırayla gönderilecek.\n\nBir kez başlat, gerisini sistem halleder — bu ekranı kapatsan bile devam eder. Onaylıyor musun?`)) return;
+    try {
+      const r = await fetch('/api/wa/kuyruk-baslat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hedefler: hedef.map((f) => ({ numara: f.telefon, ad: f.ad })), mesaj, gorseller, aralikDk }) });
+      const d = await r.json();
+      if (!r.ok) alert('Başlatılamadı: ' + (d.hata || ''));
+      else kuyrukGetir();
+    } catch { alert('Bağlantı hatası'); }
+  };
+
+  const kuyrukDurdur = async () => { if (!confirm('Otomatik gönderim durdurulsun mu? (gönderilenler geri alınmaz)')) return; await fetch('/api/wa/kuyruk-durdur', { method: 'POST' }); kuyrukGetir(); };
+
+  // Firmanın gönderim durumu: kuyruktaki kayıt > tekil gönderim
+  const kuyrukDurum = (f: Firma): 'ok' | 'hata' | 'gonderiliyor' | 'bekliyor' | undefined => {
+    if (!f.telefon) return undefined;
+    const k = kuyruk?.items?.find((i) => i.numara === f.telefon);
+    if (k) return k.durum === 'gonderildi' ? 'ok' : k.durum === 'hata' ? 'hata' : 'bekliyor';
+    return durumlar[f.telefon];
   };
 
   const manuelGonder = async () => {
@@ -184,20 +198,43 @@ export default function Whatsapp() {
                   {gorseller.length > 0 && <p className="text-xs text-metin-yum mt-1.5">{gorseller.length} görsel — mesajla birlikte gönderilecek.</p>}
                 </div>
 
-                <div className="flex items-center justify-between flex-wrap gap-2 pt-1">
-                  <span className="text-sm text-metin-yum">{telefonlu.length} telefonlu firma bulundu</span>
-                  <Button variant="soft" size="sm" onClick={sirayalGonder} disabled={toplu || telefonlu.length === 0}>{toplu ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Sırayla hepsine gönder</Button>
+                {/* Güvenli aralıklı otomatik gönderim */}
+                <div className="rounded-xl border border-cizgi p-3 space-y-2.5">
+                  {kuyruk?.aktif ? (
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-emerald-700 flex items-center gap-1.5"><Clock size={15} /> Otomatik gönderim çalışıyor</p>
+                      <p className="text-xs text-metin-yum">Bekleyen: <b>{kuyruk.bekleyen}</b> firma · Sıradaki yaklaşık <b>{kuyruk.sonrakiSn != null ? (kuyruk.sonrakiSn >= 60 ? Math.ceil(kuyruk.sonrakiSn / 60) + ' dk' : kuyruk.sonrakiSn + ' sn') : '—'}</b> sonra. Bu ekranı kapatabilirsin, sistem devam eder.</p>
+                      <Button size="sm" variant="ghost" onClick={kuyrukDurdur} className="text-rose-600"><StopCircle size={14} /> Otomatik gönderimi durdur</Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-end gap-3 flex-wrap">
+                      <Field label="Gönderim aralığı (banlanmamak için)"><Select value={aralikDk} onChange={(e) => setAralikDk(Number(e.target.value))} className="w-44">
+                        <option value={2}>2 dakika (riskli)</option>
+                        <option value={5}>5 dakika (önerilen)</option>
+                        <option value={10}>10 dakika (güvenli)</option>
+                        <option value={15}>15 dakika (çok güvenli)</option>
+                      </Select></Field>
+                      <Button variant="soft" size="sm" onClick={kuyrukBaslat} disabled={telefonlu.length === 0}><Clock size={14} /> Güvenli aralıkla hepsine gönder</Button>
+                    </div>
+                  )}
+                  <p className="text-xs text-metin-yum">Sistem her firmaya seçtiğin aralıkla + <b>rastgele sapmayla</b> sırayla gönderir. Bir kez basman yeterli. (WhatsApp güvenli aralığı garanti etmez; numaran yeniyse 10-15 dk ve günde az sayıda öneririm.)</p>
                 </div>
+
+                <p className="text-sm text-metin-yum pt-1">{telefonlu.length} telefonlu firma — istersen tek tek de gönderebilirsin:</p>
                 <div className="space-y-1.5">
                   {telefonlu.map((f, i) => {
-                    const d = f.telefon ? durumlar[f.telefon] : undefined;
+                    const d = kuyrukDurum(f);
                     return (
                       <div key={i} className="flex items-center justify-between gap-2 border-b border-cizgi/60 py-1.5">
                         <div className="text-sm min-w-0"><span className="inline-flex items-center gap-1"><Building size={13} className="text-metin-yum" /> <b>{f.ad}</b></span> <span className="text-metin-yum">· 📞 {f.telefon}</span></div>
-                        <Button size="sm" variant={d === 'ok' ? 'ghost' : 'soft'} disabled={d === 'gonderiliyor' || d === 'ok' || toplu} onClick={() => waGonder(f)}>
-                          {d === 'gonderiliyor' ? <Loader2 size={13} className="animate-spin" /> : d === 'ok' ? <CheckCircle2 size={13} className="text-emerald-600" /> : <MessageCircle size={13} />}
-                          {d === 'ok' ? 'Gönderildi' : d === 'hata' ? 'Tekrar' : 'Gönder'}
-                        </Button>
+                        {d === 'bekliyor' ? (
+                          <span className="text-xs text-amber-600 flex items-center gap-1 px-2"><Clock size={13} /> Sırada</span>
+                        ) : (
+                          <Button size="sm" variant={d === 'ok' ? 'ghost' : 'soft'} disabled={d === 'gonderiliyor' || d === 'ok' || !!kuyruk?.aktif} onClick={() => waGonder(f)}>
+                            {d === 'gonderiliyor' ? <Loader2 size={13} className="animate-spin" /> : d === 'ok' ? <CheckCircle2 size={13} className="text-emerald-600" /> : <MessageCircle size={13} />}
+                            {d === 'ok' ? 'Gönderildi' : d === 'hata' ? 'Tekrar' : 'Gönder'}
+                          </Button>
+                        )}
                       </div>
                     );
                   })}
