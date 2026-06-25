@@ -159,15 +159,34 @@ Görselde olmayan başlığı atla. Kısa girizgâh yazma, doğrudan başlıklar
   }
 });
 
-// JSON ayıkla (model bazen ```json sarmalı ekler)
+// JSON ayıkla (model bazen ```json sarmalı ekler; uzun çıktı yarıda kesilirse onarmayı dener)
 function jsonAyikla(metin) {
   if (!metin) return null;
   let t = String(metin).trim();
   const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fence) t = fence[1].trim();
-  const ilk = t.indexOf('{'); const son = t.lastIndexOf('}');
-  if (ilk === -1 || son === -1) return null;
-  try { return JSON.parse(t.slice(ilk, son + 1)); } catch { return null; }
+  const ilk = t.indexOf('{');
+  if (ilk === -1) return null;
+  t = t.slice(ilk);
+  // 1) Düz dene
+  const son = t.lastIndexOf('}');
+  if (son !== -1) { try { return JSON.parse(t.slice(0, son + 1)); } catch { /* onarmaya geç */ } }
+  // 2) Yarıda kesilmişse: parantezleri dengeleyerek onar (son eksik kalemi düşürür)
+  try {
+    let s = t; const sonKapali = s.lastIndexOf('}');
+    if (sonKapali !== -1) s = s.slice(0, sonKapali + 1);
+    let kupe = 0, kose = 0, str = false, esc = false;
+    for (const c of s) {
+      if (esc) { esc = false; continue; }
+      if (c === '\\') { esc = true; continue; }
+      if (c === '"') { str = !str; continue; }
+      if (str) continue;
+      if (c === '{') kupe++; else if (c === '}') kupe--;
+      else if (c === '[') kose++; else if (c === ']') kose--;
+    }
+    s += ']'.repeat(Math.max(0, kose)) + '}'.repeat(Math.max(0, kupe));
+    return JSON.parse(s);
+  } catch { return null; }
 }
 
 // --- Maliyet / bütçe raporu (3 senaryolu malzeme + fiyat tahmini) ---
@@ -198,7 +217,7 @@ BELGELERDEN ÇIKARILMIŞ TEKNİK SPEC'LER:
 ${specler || '(henüz teknik spec yok — proje büyüklüğüne göre tahmin et ve uyarılarda belirt)'}
 
 Yukarıdaki verilere dayanarak şemaya UYGUN, kapsamlı, 3 senaryolu maliyet raporunu SADECE JSON olarak üret.`;
-    const { metin, model } = await claude(sys, [{ role: 'user', icerik: istem }], 8000);
+    const { metin, model } = await claude(sys, [{ role: 'user', icerik: istem }], 16000);
     const rapor = jsonAyikla(metin);
     if (!rapor || !Array.isArray(rapor.kategoriler)) return res.status(502).json({ hata: 'AI geçerli rapor üretemedi, tekrar dene', ham: String(metin).slice(0, 400) });
     res.json({ rapor, model });
