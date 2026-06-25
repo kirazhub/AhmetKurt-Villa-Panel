@@ -463,42 +463,33 @@ app.get('/api/yedek', (_req, res) => res.json(oku('durum.json', null)));
 app.post('/api/firma-bul', async (req, res) => {
   if (!yapilandirilmis()) return res.status(503).json({ hata: 'OpenRouter anahtarı yok' });
   try {
-    const { kategori = 'hafriyat', bolge = 'İstanbul Avrupa Yakası / Arnavutköy' } = req.body || {};
+    const { kategori = 'hafriyat', bolge = 'İstanbul Avrupa Yakası / Arnavutköy', kanal = 'email' } = req.body || {};
+    const oncelik = kanal === 'telefon'
+      ? 'Bu işte çoğu firma TELEFON/WhatsApp ile çalışır; TELEFON numarası olan firmaları öncelikle getir, e-postası olanı da ekle.'
+      : 'Kurumsal e-POSTA adresi ve web sitesi olan PROFESYONEL firmaları öncelikle getir; e-postası olanları listenin başına koy. Telefonu da ekle.';
     const sys = 'Sen bir tedarikçi/firma araştırma asistanısın. Web aramasıyla GERÇEK firmalar bulursun. Yanıtın SADECE geçerli JSON dizisi olmalı; öncesinde/sonrasında hiçbir açıklama yazma.';
-    const soru = `"${bolge}" bölgesinde "${kategori}" işi yapan firmaları web'de araştır. Her firma için yalnızca kaynakta GERÇEKTEN gördüğün bilgileri yaz. Çıktı KESİNLİKLE şu formatta saf JSON olsun: [{"ad":"","email":"","telefon":"","web":"","sehir":""}] . E-posta bulamazsan "email" alanını boş bırak — UYDURMA. 10-15 firma hedefle.`;
-    const { metin } = await claudeWeb(sys, soru, 2500);
+    const soru = `"${bolge}" bölgesinde "${kategori}" işi yapan firmaları web'de KAPSAMLI araştır. ${oncelik} Hedef: 20-30 firma. Çıktı KESİN saf JSON: [{"ad":"","email":"","telefon":"","web":"","sehir":""}] . Bilgiyi UYDURMA; kaynakta gerçekten gördüğünü yaz, e-posta yoksa boş bırak.`;
+    const { metin } = await claudeWeb(sys, soru, 3500);
     let arr = [];
     const m = metin.match(/\[[\s\S]*\]/);
     try { arr = JSON.parse(m ? m[0] : metin); } catch { arr = []; }
-    res.json({ firmalar: Array.isArray(arr) ? arr : [], ham: Array.isArray(arr) && arr.length ? undefined : metin.slice(0, 1500) });
+    if (!Array.isArray(arr)) arr = [];
+    const gecerli = (e) => typeof e === 'string' && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e) && !/example\.com$/i.test(e);
+    const telVar = (t) => typeof t === 'string' && t.replace(/\D/g, '').length >= 10;
+    let firmalar = arr.filter((f) => gecerli(f.email) || telVar(f.telefon)).map((f) => ({ ...f, email: gecerli(f.email) ? f.email : '' }));
+    if (kanal === 'telefon') firmalar.sort((a, b) => (telVar(b.telefon) ? 1 : 0) - (telVar(a.telefon) ? 1 : 0));
+    else firmalar.sort((a, b) => (gecerli(b.email) ? 1 : 0) - (gecerli(a.email) ? 1 : 0));
+    res.json({ firmalar, ham: firmalar.length ? undefined : metin.slice(0, 1200) });
   } catch (e) {
     res.status(500).json({ hata: 'Firma araştırması başarısız', detay: String(e?.message || e) });
   }
 });
 
-// --- OTOMATİK TEKLİF (E-POSTA): profesyonel firma bul + DETAYLI mail yaz + gönder ---
-app.post('/api/teklif-otomatik', async (req, res) => {
+// --- TEKLİF MAİLİNİ YAZ (sadece metin üretir; arama/gönderim YOK) ---
+app.post('/api/teklif-mail-yaz', async (req, res) => {
   if (!yapilandirilmis()) return res.status(503).json({ hata: 'OpenRouter anahtarı yok' });
   try {
-    const { kategori = 'Hafriyat / Kazı', bolge = 'İstanbul Avrupa Yakası / Arnavutköy', sorular = '', imza = '', ekler = [], kabaNot = '', proje = '', specler = '', autoMail = true } = req.body || {};
-
-    // 1) Firmaları web'de bul — PROFESYONEL / e-postalı firmalara öncelik
-    const bulSys = 'Sen tedarikçi/firma araştırma asistanısın. Web aramasıyla GERÇEK firmalar bulursun. Yanıtın SADECE geçerli JSON dizisi olmalı, başka metin yok.';
-    const bulSoru = `"${bolge}" bölgesinde "${kategori}" işi yapan PROFESYONEL firmaları web'de kapsamlı araştır. ÖNCELİĞİN: kurumsal e-POSTA adresi ve web sitesi olan, ciddi/kurumsal firmalar — bunları listenin başına koy. Mümkün olduğunca çok firma için GERÇEK e-posta adresi bul. Telefonu da ekle ama e-postası olanlar önce gelsin. Hedef: 20-30 firma. Çıktı KESİN saf JSON: [{"ad":"","email":"","telefon":"","web":"","sehir":""}] . Bilgiyi UYDURMA; kaynakta gerçekten gördüğünü yaz, e-posta yoksa boş bırak.`;
-    const { metin: firmaMetin } = await claudeWeb(bulSys, bulSoru, 3500);
-    let firmalar = [];
-    const mm = firmaMetin.match(/\[[\s\S]*\]/);
-    try { firmalar = JSON.parse(mm ? mm[0] : firmaMetin); } catch { firmalar = []; }
-    if (!Array.isArray(firmalar)) firmalar = [];
-    const gecerli = (e) => typeof e === 'string' && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e) && !/example\.com$/i.test(e);
-    const telefonVar = (t) => typeof t === 'string' && t.replace(/\D/g, '').length >= 10;
-    let kullanilabilir = firmalar.filter((f) => gecerli(f.email) || telefonVar(f.telefon));
-    // e-postalı (profesyonel) firmaları başa al
-    kullanilabilir.sort((a, b) => (gecerli(b.email) ? 1 : 0) - (gecerli(a.email) ? 1 : 0));
-    const emailli = kullanilabilir.filter((f) => gecerli(f.email));
-    const telefonlu = kullanilabilir.filter((f) => telefonVar(f.telefon));
-
-    // 2) DETAYLI, profesyonel teklif maili yaz
+    const { kategori = '', bolge = 'İstanbul', sorular = '', imza = '', kabaNot = '', proje = '', specler = '' } = req.body || {};
     const mailSys = `Sen "Ahmet Kurt Villa Projesi"nin satın alma ve teknik koordinasyon yöneticisi adına yazan, çok deneyimli bir inşaat satın alma uzmanısın. Görevin: profesyonel taşeron/tedarikçi firmalara gönderilecek DETAYLI, bilgi verici ve net bilgi isteyici bir teklif e-postası yazmak. Profesyonel firmalar; işin kapsamını, ölçüleri ve beklentileri net anlatan, ciddi hazırlanmış talepleri ciddiye alır. Resmi ama akıcı bir dil kullan. SADECE e-posta gövdesini yaz (konu satırı ekleme, ön/son açıklama yazma).`;
     const mailIstem = `İŞ / KATEGORİ: ${kategori}
 BÖLGE: ${bolge}
@@ -515,25 +506,16 @@ ${kabaNot || '(serbest not girilmedi — kategoriye uygun standart kapsamı yaz)
 GÖREV: Yukarıdaki bilgilerle, "${kategori}" işi için PROFESYONEL bir firmaya gönderilecek DETAYLI teklif isteme e-postası yaz:
 - Kibar açılış + projeyi kısaca tanıt (ad, konum, ölçek/m², yapı tipi, kat durumu).
 - Yapılacak işin KAPSAMINI net ve teknik anlat; elindeki ölçüleri, m²'leri, kotları, malzeme bilgilerini SOMUT olarak belirt. Yoksa firmadan bu detayları netleştirmesini iste.
-- Firmadan KAPSAMLI ve detaylı teklif iste: kalem kalem birim fiyatlar, malzeme dahil mi (hangi markalar/kalite seçenekleri), iş süresi, başlangıç tarihi, ekip/ekipman, benzer referans işler, ödeme koşulları, garanti/kalite belgeleri, keşif için saha daveti.
+- Firmadan KAPSAMLI teklif iste: kalem kalem birim fiyatlar, malzeme dahil mi (hangi markalar/kalite seçenekleri), iş süresi, başlangıç tarihi, ekip/ekipman, benzer referans işler, ödeme koşulları, garanti/kalite belgeleri, keşif için saha daveti.
 ${sorular ? `- Ayrıca şu özel soruları da sor:\n${sorular}` : ''}
 - Şu imzayla bitir:\n${imza}
 
-Türkçe, resmi-profesyonel, akıcı ve bilgi yoğun. Profesyonelce, ama gereksiz uzatma. Sadece gövde metni.`;
+Türkçe, resmi-profesyonel, akıcı ve bilgi yoğun. Gereksiz uzatma. Sadece gövde metni.`;
     const { metin: govde } = await claude(mailSys, [{ role: 'user', icerik: mailIstem }], 2000);
     const konu = `Teklif Talebi — ${kategori} — Ahmet Kurt Villa Projesi`;
-
-    // 3) E-postası olanlara gönder
-    let gonderilen = 0;
-    if (autoMail && mailHazir() && emailli.length > 0) {
-      const attachments = (ekler || []).map((e) => ({ filename: e.ad, content: Buffer.from(String(e.base64 || ''), 'base64') }));
-      await transport().sendMail({ from: `Ahmet Kurt Villa Projesi <${MAIL_USER}>`, to: MAIL_USER, bcc: emailli.map((f) => f.email), subject: konu, text: govde, attachments });
-      gonderilen = emailli.length;
-    }
-
-    res.json({ bulunan: kullanilabilir, toplamTaranan: firmalar.length, emailliSayi: emailli.length, telefonluSayi: telefonlu.length, gonderilen, konu, govde, mailHazir: mailHazir() });
+    res.json({ govde, konu });
   } catch (e) {
-    res.status(500).json({ hata: 'Otomatik teklif başarısız', detay: String(e?.message || e) });
+    res.status(e.status || 500).json({ hata: 'Mail yazılamadı', detay: e.detay || String(e?.message || e) });
   }
 });
 

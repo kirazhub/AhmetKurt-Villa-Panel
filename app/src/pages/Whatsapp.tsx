@@ -70,9 +70,9 @@ export default function Whatsapp() {
   const firmaBul = async () => {
     setBuluyor(true); setFirmalar([]); setDurumlar({});
     try {
-      const r = await fetch('/api/teklif-otomatik', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kategori, bolge, imza, autoMail: false }) });
+      const r = await fetch('/api/firma-bul', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kategori, bolge, kanal: 'telefon' }) });
       const d = await r.json();
-      if (r.ok) { setFirmalar(d.bulunan || []); if (!mesaj) setMesaj(d.waMesaj || ''); }
+      if (r.ok) setFirmalar(d.firmalar || []);
       else alert('Hata: ' + (d.hata || ''));
     } catch { alert('Bağlantı hatası'); }
     setBuluyor(false);

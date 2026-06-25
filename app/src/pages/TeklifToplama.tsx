@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Sparkles, Loader2, KeyRound, CheckCircle2, UserCog, Inbox, ChevronDown, ChevronUp, Printer, Image as ImageIcon, Building, Mail, Phone, Wand2 } from 'lucide-react';
+import { Sparkles, Loader2, KeyRound, CheckCircle2, UserCog, Inbox, ChevronDown, ChevronUp, Printer, Image as ImageIcon, Building, Mail, Phone, Wand2, Search, Send, Square, CheckSquare } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { PageHeader, Card, CardBody, Button, Badge, Field, Input, Select, Textarea } from '../components/ui';
 import { blobGetir } from '../lib/idb';
@@ -10,8 +10,7 @@ function blobToB64(blob: Blob): Promise<string> {
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = rej; r.readAsDataURL(blob); });
 }
 
-interface Bulunan { ad: string; email?: string; telefon?: string; web?: string; sehir?: string; }
-interface Sonuc { bulunan: Bulunan[]; toplamTaranan: number; emailliSayi: number; telefonluSayi: number; gonderilen: number; konu: string; govde: string; mailHazir: boolean; }
+interface Firma { ad: string; email?: string; telefon?: string; web?: string; sehir?: string; }
 
 export default function TeklifToplama() {
   const { belgeler, proje, gonderenProfil, gonderenProfilGuncelle, firmaEkle, rfqEkle, rfqKayitlari } = useStore();
@@ -19,16 +18,25 @@ export default function TeklifToplama() {
   const [mailAdres, setMailAdres] = useState('');
   const [profilAcik, setProfilAcik] = useState(false);
 
+  // 1) Mesaj hazırlama
   const [kategori, setKategori] = useState('Hafriyat / Kazı');
-  const [bolge, setBolge] = useState('İstanbul Avrupa Yakası / Arnavutköy');
   const [kabaNot, setKabaNot] = useState('');
   const [sorular, setSorular] = useState('');
+  const [konu, setKonu] = useState('');
+  const [govde, setGovde] = useState('');
+  const [mailYaziyor, setMailYaziyor] = useState(false);
   const [secilenEkler, setSecilenEkler] = useState<Record<string, boolean>>({});
   const [thumb, setThumb] = useState<Record<string, string>>({});
 
-  const [calisiyor, setCalisiyor] = useState(false);
-  const [sonuc, setSonuc] = useState<Sonuc | null>(null);
-  const [mailAcik, setMailAcik] = useState(false);
+  // 2) Firma arama + seçim
+  const [bolge, setBolge] = useState('İstanbul Avrupa Yakası / Arnavutköy');
+  const [ariyor, setAriyor] = useState(false);
+  const [firmalar, setFirmalar] = useState<Firma[]>([]);
+  const [secili, setSecili] = useState<Record<string, boolean>>({});
+
+  // 3) Gönderim
+  const [gonderiliyor, setGonderiliyor] = useState(false);
+  const [sonGonderim, setSonGonderim] = useState<number | null>(null);
 
   // Gelen kutusu
   const [gelenler, setGelenler] = useState<{ from: string; subject: string; date: string; text: string; ozet: string }[]>([]);
@@ -37,12 +45,13 @@ export default function TeklifToplama() {
 
   const fotolar = useMemo(() => belgeler.filter((b) => b.tur === 'foto' && b.blobId), [belgeler]);
   const specliSayi = useMemo(() => belgeler.filter((b) => b.spec).length, [belgeler]);
+  const emailliFirmalar = firmalar.filter((f) => f.email);
+  const seciliEmailler = emailliFirmalar.filter((f) => secili[f.email!]).map((f) => f.email!);
 
   useEffect(() => {
     fetch('/api/mail/health').then((r) => r.json()).then((d) => { setMailHazir(!!d.yapilandirilmis); setMailAdres(d.adres || ''); }).catch(() => setMailHazir(false));
   }, []);
 
-  // Foto küçük resimleri
   useEffect(() => {
     let iptal = false; const olusan: string[] = [];
     (async () => {
@@ -60,34 +69,63 @@ export default function TeklifToplama() {
   const imzaMetni = () => `${gonderenProfil.ad}\n${gonderenProfil.unvan}${gonderenProfil.telefon ? '\nTel: ' + gonderenProfil.telefon : ''}\ninsaat@pokkop.com`;
   const speclerTopla = () => belgeler.filter((b) => b.spec).map((b) => `### ${b.ad}\n${b.spec}`).join('\n\n');
 
-  const otomatikGonder = async () => {
-    if (!mailHazir) { alert('Mail hesabı bağlı değil; gönderim yapılamaz.'); return; }
-    if (!confirm(`"${kategori}" için ${bolge} bölgesinde e-POSTASI olan profesyonel firmalar bulunup detaylı teklif maili gönderilecek. Onaylıyor musun?`)) return;
-    setCalisiyor(true); setSonuc(null);
+  // 1) AI ile profesyonel mail yaz
+  const mailYaz = async () => {
+    setMailYaziyor(true);
+    try {
+      const r = await fetch('/api/teklif-mail-yaz', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kategori, bolge, sorular, imza: imzaMetni(), kabaNot, proje: JSON.stringify(proje), specler: speclerTopla() }),
+      });
+      const d = await r.json();
+      if (r.ok) { setGovde(d.govde || ''); setKonu(d.konu || `Teklif Talebi — ${kategori}`); }
+      else alert('Yazılamadı: ' + (d.hata || ''));
+    } catch { alert('Bağlantı hatası'); }
+    setMailYaziyor(false);
+  };
+
+  // 2) Firma ara
+  const firmaAra = async () => {
+    setAriyor(true); setFirmalar([]); setSecili({});
+    try {
+      const r = await fetch('/api/firma-bul', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kategori, bolge, kanal: 'email' }) });
+      const d = await r.json();
+      if (r.ok) setFirmalar(d.firmalar || []);
+      else alert('Hata: ' + (d.hata || ''));
+    } catch { alert('Bağlantı hatası'); }
+    setAriyor(false);
+  };
+
+  const tumunuSec = () => { const hepsi = emailliFirmalar.every((f) => secili[f.email!]); const yeni: Record<string, boolean> = {}; emailliFirmalar.forEach((f) => { yeni[f.email!] = !hepsi; }); setSecili(yeni); };
+
+  // 3) Seçili firmalara gönder
+  const gonder = async () => {
+    if (!mailHazir) { alert('Mail hesabı bağlı değil.'); return; }
+    if (!govde.trim()) { alert('Önce yukarıdan mesajı hazırla (AI ile yaz).'); return; }
+    if (seciliEmailler.length === 0) { alert('Listeden en az bir firma seç.'); return; }
+    if (!confirm(`Seçili ${seciliEmailler.length} firmaya teklif maili gönderilecek. Onaylıyor musun?`)) return;
+    setGonderiliyor(true); setSonGonderim(null);
     try {
       const ekler: { ad: string; base64: string }[] = [];
       for (const b of fotolar.filter((x) => secilenEkler[x.id])) {
         const blob = await blobGetir(b.blobId!);
         if (blob) ekler.push({ ad: b.ad, base64: await blobToB64(blob) });
       }
-      const r = await fetch('/api/teklif-otomatik', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kategori, bolge, sorular, imza: imzaMetni(), ekler, kabaNot, proje: JSON.stringify(proje), specler: speclerTopla() }),
-      });
+      const r = await fetch('/api/mail/gonder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ alicilar: seciliEmailler, konu, govde, ekler }) });
       const d = await r.json();
-      if (!r.ok) { alert('Hata: ' + (d.hata || '')); setCalisiyor(false); return; }
-      setSonuc(d);
-      (d.bulunan || []).forEach((f: Bulunan) => { if (f.ad && f.email) firmaEkle({ ad: f.ad, email: f.email, kategori, telefon: f.telefon, sehir: f.sehir, kaynak: 'ai' }); });
-      if (d.gonderilen > 0) rfqEkle({ tarih: bugun(), konu: d.konu, govde: d.govde, kategori, alicilar: (d.bulunan || []).filter((f: Bulunan) => f.email).map((f: Bulunan) => f.email!), ekSayisi: ekler.length, durum: 'gonderildi' });
+      if (!r.ok) { alert('Gönderilemedi: ' + (d.hata || '')); setGonderiliyor(false); return; }
+      setSonGonderim(seciliEmailler.length);
+      emailliFirmalar.filter((f) => secili[f.email!]).forEach((f) => firmaEkle({ ad: f.ad, email: f.email!, kategori, telefon: f.telefon, sehir: f.sehir, kaynak: 'ai' }));
+      rfqEkle({ tarih: bugun(), konu, govde, kategori, alicilar: seciliEmailler, ekSayisi: ekler.length, durum: 'gonderildi' });
     } catch { alert('Bağlantı hatası.'); }
-    setCalisiyor(false);
+    setGonderiliyor(false);
   };
 
   const yazdir = () => {
-    if (!sonuc) return;
+    if (!govde) return;
     const w = window.open('', '_blank'); if (!w) return;
-    const html = (sonuc.govde || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>');
-    w.document.write(`<html><head><title>${sonuc.konu}</title><meta charset="utf-8"><style>body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:760px;margin:40px auto;padding:0 24px;color:#1f2430;line-height:1.7}h1{font-size:18px;color:#92400e;border-bottom:3px solid #d97706;padding-bottom:8px}</style></head><body><h1>${sonuc.konu}</h1><div>${html}</div><script>window.onload=()=>window.print()</script></body></html>`);
+    const html = govde.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>');
+    w.document.write(`<html><head><title>${konu}</title><meta charset="utf-8"><style>body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:760px;margin:40px auto;padding:0 24px;color:#1f2430;line-height:1.7}h1{font-size:18px;color:#92400e;border-bottom:3px solid #d97706;padding-bottom:8px}</style></head><body><h1>${konu}</h1><div>${html}</div><script>window.onload=()=>window.print()</script></body></html>`);
     w.document.close();
   };
 
@@ -100,8 +138,8 @@ export default function TeklifToplama() {
   return (
     <>
       <PageHeader
-        baslik="Teklif Toplama (E-posta)"
-        aciklama="Sen işi kısaca anlat — AI profesyonel firmalara bina detaylı, ölçü ve malzeme bilgili teklif maili yazıp gönderir"
+        baslik="Teklif Toplama"
+        aciklama="1) Mesajı hazırla → 2) Firma ara → 3) Seçtiklerine gönder. Otomatik gönderim yok, kontrol sende."
         sag={<Button variant="ghost" size="sm" onClick={() => setProfilAcik((v) => !v)}><UserCog size={15} /> İmza</Button>}
       />
 
@@ -124,26 +162,35 @@ export default function TeklifToplama() {
         </CardBody></Card>
       )}
 
+      {/* ADIM 1 — Mesajı hazırla */}
       <Card className="mb-6"><CardBody className="space-y-4">
-        <div className="grid sm:grid-cols-2 gap-4">
-          <Field label="Hangi konuda teklif?"><Select value={kategori} onChange={(e) => setKategori(e.target.value)}>{TASERON_KATEGORILERI.map((k) => <option key={k} value={k}>{k}</option>)}</Select></Field>
-          <Field label="Bölge"><Input value={bolge} onChange={(e) => setBolge(e.target.value)} /></Field>
-        </div>
+        <p className="font-semibold text-metin flex items-center gap-2"><span className="w-6 h-6 rounded-full bg-marka-500 text-white text-xs flex items-center justify-center font-bold">1</span> Mesajı hazırla</p>
 
-        {/* Kısaca anlat → AI detaylandırır */}
+        <Field label="Hangi konuda teklif?"><Select value={kategori} onChange={(e) => setKategori(e.target.value)}>{TASERON_KATEGORILERI.map((k) => <option key={k} value={k}>{k}</option>)}</Select></Field>
+
         <div className="rounded-xl bg-marka-50/60 border border-marka-100 p-3 space-y-1.5">
-          <p className="text-sm font-medium text-metin flex items-center gap-1.5"><Wand2 size={15} className="text-marka-500" /> İşi kısaca anlat — AI profesyonel ve detaylı maile çevirir</p>
-          <Textarea value={kabaNot} onChange={(e) => setKabaNot(e.target.value)} placeholder={`Örn: ${kategori.includes('Hafriyat') ? 'Temel hafriyatı lazım, ~350 m² tabanda yarım metre derinlik, çıkan toprak arsada kalacak, nakliye yok. Fiyat, süre, ne zaman başlanır öğrenmek istiyorum.' : 'Ne yaptırmak istediğini kendi cümlelerinle yaz; AI ölçüleri, malzeme ve proje detaylarını ekleyip profesyonel bir teklif mektubu kurar.'}`} className="min-h-[100px] text-sm bg-white" />
-          <p className="text-xs text-metin-yum">AI; proje künyesini ve {specliSayi > 0 ? `${specliSayi} belgeden çıkardığı teknik ölçü/m²/malzeme bilgisini` : 'proje bilgilerini'} kullanarak maili kendisi zenginleştirir, eksik detayları firmadan ister.</p>
+          <p className="text-sm font-medium text-metin flex items-center gap-1.5"><Wand2 size={15} className="text-marka-500" /> İşi kısaca anlat — AI profesyonel yazıya döker</p>
+          <Textarea value={kabaNot} onChange={(e) => setKabaNot(e.target.value)} placeholder="Ne istediğini kendi cümlelerinle yaz. Örn: alüminyum doğrama lazım, ısıcam istiyorum, fiyat ve süre öğrenmek istiyorum…" className="min-h-[90px] text-sm bg-white" />
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button size="sm" variant="soft" onClick={mailYaz} disabled={mailYaziyor}>{mailYaziyor ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} AI ile profesyonel yazıya dök</Button>
+            <span className="text-xs text-metin-yum">{specliSayi > 0 ? `${specliSayi} belgeden teknik ölçü/m²/malzeme bilgisi de eklenir.` : 'Proje künyesi otomatik eklenir.'}</span>
+          </div>
         </div>
 
-        <Field label="Eklemek istediğin özel sorular (opsiyonel)"><Textarea value={sorular} onChange={(e) => setSorular(e.target.value)} placeholder="Boş bırakabilirsin — AI zaten fiyat, malzeme, süre, referans, ödeme, garanti gibi tüm kritik soruları sorar." className="min-h-[70px] text-xs" /></Field>
+        <Field label="Eklemek istediğin özel sorular (opsiyonel)"><Textarea value={sorular} onChange={(e) => setSorular(e.target.value)} placeholder="Boş bırak — AI zaten fiyat, malzeme, süre, referans, ödeme, garanti gibi soruları sorar." className="min-h-[60px] text-xs" /></Field>
 
-        {/* Görsel ekler */}
+        {(govde || mailYaziyor) && (
+          <div className="space-y-2">
+            <Field label="Konu"><Input value={konu} onChange={(e) => setKonu(e.target.value)} /></Field>
+            <Field label="Mail metni (düzenleyebilirsin)"><Textarea value={govde} onChange={(e) => setGovde(e.target.value)} className="min-h-[260px] text-sm" /></Field>
+          </div>
+        )}
+
+        {/* Görseller */}
         <div>
           <p className="text-sm font-medium text-metin mb-2 flex items-center gap-1.5"><ImageIcon size={15} /> Eklenecek görseller (tıkla-seç)</p>
           {fotolar.length === 0 ? (
-            <p className="text-xs text-metin-yum">Foto & Belge arşivinde görsel yok. HEIC→JPG ya da Foto & Belge'den ekleyebilirsin.</p>
+            <p className="text-xs text-metin-yum">Foto & Belge arşivinde görsel yok.</p>
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-6 gap-2">
               {fotolar.map((b) => {
@@ -159,46 +206,57 @@ export default function TeklifToplama() {
             </div>
           )}
         </div>
-
-        <div className="pt-1">
-          <Button onClick={otomatikGonder} disabled={calisiyor || !mailHazir} size="md">
-            {calisiyor ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />} AI ile profesyonel firma bul ve detaylı mail gönder
-          </Button>
-          {calisiyor && <p className="text-sm text-metin-yum mt-2 flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> E-postalı profesyonel firmalar bulunuyor, detaylı mail yazılıyor ve gönderiliyor… (1-2 dk)</p>}
-        </div>
       </CardBody></Card>
 
-      {/* Sonuç */}
-      {sonuc && (
-        <Card className="mb-6"><CardBody>
-          <div className="flex flex-wrap items-center gap-2 mb-4">
-            <Badge tone="mavi">{sonuc.toplamTaranan} firma tarandı</Badge>
-            <Badge tone="amber">{sonuc.emailliSayi} e-postalı (profesyonel)</Badge>
-            <Badge tone={sonuc.gonderilen > 0 ? 'yesil' : 'gri'}>{sonuc.gonderilen} firmaya mail gönderildi</Badge>
-          </div>
+      {/* ADIM 2 — Firma ara */}
+      <Card className="mb-6"><CardBody className="space-y-4">
+        <p className="font-semibold text-metin flex items-center gap-2"><span className="w-6 h-6 rounded-full bg-marka-500 text-white text-xs flex items-center justify-center font-bold">2</span> Firma ara</p>
+        <div className="flex items-end gap-3 flex-wrap">
+          <div className="flex-1 min-w-[200px]"><Field label="Bölge"><Input value={bolge} onChange={(e) => setBolge(e.target.value)} /></Field></div>
+          <Button onClick={firmaAra} disabled={ariyor}>{ariyor ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />} "{kategori}" için ara</Button>
+        </div>
+        {ariyor && <p className="text-sm text-metin-yum flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Profesyonel firmalar araştırılıyor (e-postalılar öne çıkar)… (1-2 dk)</p>}
 
-          {sonuc.bulunan.length > 0 ? (
-            <div className="space-y-1.5 mb-3">
-              {sonuc.bulunan.map((f, i) => (
-                <div key={i} className="flex items-center justify-between gap-2 flex-wrap border-b border-cizgi/60 py-1.5">
-                  <div className="text-sm min-w-0">
-                    <span className="inline-flex items-center gap-1"><Building size={13} className="text-metin-yum" /> <b>{f.ad}</b></span>
-                    {f.email
-                      ? <span className="text-marka-700"> · <Mail size={12} className="inline" /> {f.email} {sonuc.gonderilen > 0 && <Badge tone="yesil">mail ✓</Badge>}</span>
-                      : f.telefon ? <span className="text-metin-yum"> · <Phone size={12} className="inline" /> {f.telefon} <Badge tone="gri">e-posta yok</Badge></span> : null}
-                  </div>
-                </div>
-              ))}
+        {firmalar.length > 0 && (
+          <>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex gap-2 flex-wrap"><Badge tone="amber">{emailliFirmalar.length} e-postalı</Badge><Badge tone="gri">{firmalar.length - emailliFirmalar.length} yalnız telefon</Badge><Badge tone="yesil">{seciliEmailler.length} seçili</Badge></div>
+              <Button size="sm" variant="ghost" onClick={tumunuSec} disabled={emailliFirmalar.length === 0}>{emailliFirmalar.every((f) => secili[f.email!]) && emailliFirmalar.length > 0 ? 'Seçimi kaldır' : 'Tümünü seç (e-postalı)'}</Button>
             </div>
-          ) : <p className="text-sm text-metin-yum mb-3">Bu kategoride e-postalı profesyonel firma bulunamadı. Farklı kategori/bölge dene; telefonla çalışan firmalar için WhatsApp sayfasını kullan.</p>}
+            <div className="space-y-1">
+              {firmalar.map((f, i) => {
+                const sec = f.email ? !!secili[f.email] : false;
+                return (
+                  <button key={i} disabled={!f.email} onClick={() => f.email && setSecili((s) => ({ ...s, [f.email!]: !sec }))}
+                    className={`w-full text-left flex items-center gap-2.5 border-b border-cizgi/60 py-2 px-1 rounded-lg transition ${f.email ? 'cursor-pointer hover:bg-zemin' : 'opacity-60 cursor-default'}`}>
+                    {f.email ? (sec ? <CheckSquare size={17} className="text-marka-500 shrink-0" /> : <Square size={17} className="text-metin-yum shrink-0" />) : <Square size={17} className="text-cizgi shrink-0" />}
+                    <div className="text-sm min-w-0 flex-1">
+                      <span className="inline-flex items-center gap-1"><Building size={13} className="text-metin-yum" /> <b>{f.ad}</b></span>
+                      {f.email ? <span className="text-marka-700"> · <Mail size={12} className="inline" /> {f.email}</span>
+                        : f.telefon ? <span className="text-metin-yum"> · <Phone size={12} className="inline" /> {f.telefon} <Badge tone="gri">e-posta yok</Badge></span> : null}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-metin-yum">Yalnız telefonu olan firmalar maile uygun değil; onlara <b>WhatsApp</b> sayfasından ulaşabilirsin.</p>
+          </>
+        )}
+      </CardBody></Card>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <Button variant="ghost" size="sm" onClick={() => setMailAcik((v) => !v)}>{mailAcik ? <ChevronUp size={15} /> : <ChevronDown size={15} />} Gönderilen e-mailı gör</Button>
-            <Button variant="soft" size="sm" onClick={yazdir}><Printer size={15} /> PDF / Yazdır</Button>
-          </div>
-          {mailAcik && <div className="mt-2 rounded-xl bg-zemin border border-cizgi p-4 text-sm whitespace-pre-wrap">{sonuc.govde}</div>}
-        </CardBody></Card>
-      )}
+      {/* ADIM 3 — Gönder */}
+      <Card className="mb-6"><CardBody className="space-y-3">
+        <p className="font-semibold text-metin flex items-center gap-2"><span className="w-6 h-6 rounded-full bg-marka-500 text-white text-xs flex items-center justify-center font-bold">3</span> Seçtiklerine gönder</p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button onClick={gonder} disabled={gonderiliyor || !mailHazir || !govde.trim() || seciliEmailler.length === 0}>
+            {gonderiliyor ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} Seçili {seciliEmailler.length} firmaya gönder
+          </Button>
+          {govde && <Button variant="soft" size="sm" onClick={yazdir}><Printer size={15} /> PDF / Yazdır</Button>}
+        </div>
+        {!govde.trim() && <p className="text-xs text-metin-yum">Önce Adım 1'de mesajı hazırla.</p>}
+        {seciliEmailler.length === 0 && govde.trim() && <p className="text-xs text-metin-yum">Adım 2'de listeden firma seç.</p>}
+        {sonGonderim != null && <p className="text-sm text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={15} /> {sonGonderim} firmaya gönderildi.</p>}
+      </CardBody></Card>
 
       {/* Gelen Teklifler */}
       <Card className="mb-6"><CardBody>
