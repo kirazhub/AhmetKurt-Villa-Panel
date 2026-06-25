@@ -29,7 +29,7 @@ const HEADERS = () => ({
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '60mb' }));
 
 // --- Basit şifre koruması (uygulama seviyesi; tarayıcı fetch ile sorunsuz) ---
 const VILLA_SIFRE = process.env.VILLA_SIFRE || '123456';
@@ -152,14 +152,40 @@ app.get('/api/wa/durum', (_req, res) => res.json(wa.durum()));
 app.get('/api/wa/gelenler', (_req, res) => res.json({ mesajlar: wa.gelenler() }));
 app.post('/api/wa/gonder', async (req, res) => {
   try {
-    const { numara, mesaj } = req.body || {};
-    if (!numara || !mesaj) return res.status(400).json({ hata: 'numara ve mesaj gerekli' });
-    const jid = await wa.gonder(numara, mesaj);
+    const { numara, mesaj, gorseller } = req.body || {};
+    const imgVar = Array.isArray(gorseller) && gorseller.length > 0;
+    if (!numara || (!mesaj && !imgVar)) return res.status(400).json({ hata: 'numara ve (mesaj veya görsel) gerekli' });
+    const jid = await wa.gonder(numara, mesaj || '', gorseller);
     res.json({ ok: true, jid });
   } catch (e) {
     res.status(503).json({ hata: 'Gönderilemedi', detay: String(e?.message || e) });
   }
 });
+// --- Kaba notu profesyonel WhatsApp/teklif mesajına çevir ---
+app.post('/api/ai/mesaj-yaz', async (req, res) => {
+  if (!yapilandirilmis()) return res.status(503).json({ hata: 'OpenRouter API anahtarı tanımlı değil (.env).' });
+  try {
+    const { kabaTarif = '', baslik = '', profil = '', kanal = 'whatsapp' } = req.body || {};
+    const sys = `Sen "Ahmet Kurt Villa Projesi"nin satın alma ve koordinasyon yöneticisi adına yazan, çok iyi Türkçe yazan profesyonel bir asistansın. Görevin: kullanıcının dağınık/eksik notlarını, firmaya gönderilecek DÜZGÜN, KISA ve NET bir ${kanal === 'whatsapp' ? 'WhatsApp' : 'e-posta'} mesajına dönüştürmek.
+
+KURALLAR:
+- Selamla, kısaca kendini/projeyi tanıt, ne istediğini net yaz, fiyat + termin (ne zaman başlanır/biter) iste, iletişim için teşekkür et.
+- Kullanıcının AKLINA GELMEYEN ama firmanın doğru teklif vermesi için GEREKEN detayları kibarca SOR veya belirt (örn. işin bölgesi/adresi, yaklaşık ölçü/miktar, malzeme dahil mi, keşif için saha daveti, son teklif tarihi).
+- Proje bağlamı: İstanbul/Arnavutköy/Boyalık'ta lüks villa şantiyesi. İlgiliyse kullan, zorlama.
+- Kısa tut (WhatsApp için 4-8 satır). Resmi ama samimi. Abartı/emoji YOK ya da en fazla 1 tane.
+- SADECE mesaj metnini döndür. Başlık, açıklama, "işte mesajınız" gibi ekleme yapma.`;
+    const kullanici = `Konu/iş başlığı: ${baslik || '(belirtilmedi)'}
+Gönderen kişi: ${profil || '(belirtilmedi)'}
+
+Kullanıcının kaba notları / yapılacak iş:
+${kabaTarif || '(not girilmedi — konu başlığına göre mantıklı bir teklif isteği yaz)'}`;
+    const { metin } = await claude(sys, [{ role: 'user', icerik: kullanici }], 900);
+    res.json({ mesaj: metin });
+  } catch (e) {
+    res.status(e.status || 500).json({ hata: 'Mesaj yazılamadı', detay: e.detay || String(e?.message || e) });
+  }
+});
+
 app.post('/api/wa/cikis', async (_req, res) => { await wa.cikis(); res.json({ ok: true }); });
 const oku = (dosya, varsayilan) => { try { return JSON.parse(readFileSync(join(VERI, dosya), 'utf8')); } catch { return varsayilan; } };
 const yaz = (dosya, veri) => { try { writeFileSync(join(VERI, dosya), JSON.stringify(veri, null, 2)); } catch (e) { console.error('yaz hata', e); } };

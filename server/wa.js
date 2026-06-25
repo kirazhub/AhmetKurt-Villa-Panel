@@ -64,11 +64,24 @@ function jidYap(numara) {
   return d + '@s.whatsapp.net';
 }
 
-export async function gonder(numara, mesaj) {
+export async function gonder(numara, mesaj, gorseller) {
   if (!sock || !baglandi) throw new Error('WhatsApp bağlı değil');
   const jid = jidYap(numara);
-  await sock.sendMessage(jid, { text: mesaj });
+  const imgs = (Array.isArray(gorseller) ? gorseller : []).map(dataUrlToBuffer).filter(Boolean);
+  if (imgs.length === 0) {
+    await sock.sendMessage(jid, { text: mesaj });
+  } else {
+    // Önce metin, sonra her görsel ayrı ayrı (ilk görsele de yazı caption olarak)
+    for (let i = 0; i < imgs.length; i++) {
+      await sock.sendMessage(jid, i === 0 ? { image: imgs[i], caption: mesaj || '' } : { image: imgs[i] });
+      if (i < imgs.length - 1) await new Promise((r) => setTimeout(r, 700));
+    }
+  }
   return jid;
+}
+
+function dataUrlToBuffer(d) {
+  try { const b64 = String(d).split(',').pop(); return Buffer.from(b64, 'base64'); } catch { return null; }
 }
 
 export function gelenler() { return gelenOku(); }

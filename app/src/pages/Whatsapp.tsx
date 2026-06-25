@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { MessageCircle, Loader2, Send, QrCode, CheckCircle2, RefreshCw, Inbox, LogOut, Search, Building, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
+import { MessageCircle, Loader2, Send, QrCode, CheckCircle2, RefreshCw, Inbox, LogOut, Search, Building, Sparkles, ChevronDown, ChevronUp, ImagePlus, X, Wand2 } from 'lucide-react';
 import { PageHeader, Card, CardBody, Button, Field, Input, Select, Textarea } from '../components/ui';
 import { useStore } from '../store/useStore';
 import { tarih } from '../lib/format';
@@ -8,6 +8,26 @@ import { TASERON_KATEGORILERI } from '../types';
 interface Gelen { from: string; isim?: string; text: string; tarih: string; }
 interface Firma { ad: string; email?: string; telefon?: string; web?: string; sehir?: string; }
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Görseli tarayıcıda küçült (max 1280px, jpeg) — gönderim hafif olsun
+function resmiKucult(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const max = 1280; let { width, height } = img;
+        if (width > max || height > max) { const o = max / Math.max(width, height); width = Math.round(width * o); height = Math.round(height * o); }
+        const c = document.createElement('canvas'); c.width = width; c.height = height;
+        const ctx = c.getContext('2d'); if (!ctx) return reject(new Error('canvas'));
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(c.toDataURL('image/jpeg', 0.78));
+      };
+      img.onerror = reject; img.src = reader.result as string;
+    };
+    reader.onerror = reject; reader.readAsDataURL(file);
+  });
+}
 
 export default function Whatsapp() {
   const gonderenProfil = useStore((s) => s.gonderenProfil);
@@ -21,6 +41,9 @@ export default function Whatsapp() {
   const [buluyor, setBuluyor] = useState(false);
   const [firmalar, setFirmalar] = useState<Firma[]>([]);
   const [mesaj, setMesaj] = useState('');
+  const [kabaTarif, setKabaTarif] = useState('');
+  const [aiYaziyor, setAiYaziyor] = useState(false);
+  const [gorseller, setGorseller] = useState<string[]>([]);
   const [durumlar, setDurumlar] = useState<Record<string, 'ok' | 'hata' | 'gonderiliyor'>>({});
   const [toplu, setToplu] = useState(false);
 
@@ -41,24 +64,39 @@ export default function Whatsapp() {
 
   const bagli = durum?.baglandi;
   const telefonlu = firmalar.filter((f) => f.telefon);
+  const imza = `${gonderenProfil.ad}\n${gonderenProfil.unvan}`;
 
   const firmaBul = async () => {
     setBuluyor(true); setFirmalar([]); setDurumlar({});
     try {
-      const imza = `${gonderenProfil.ad}\n${gonderenProfil.unvan}`;
       const r = await fetch('/api/teklif-otomatik', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kategori, bolge, imza, autoMail: false }) });
       const d = await r.json();
-      if (r.ok) { setFirmalar(d.bulunan || []); setMesaj(d.waMesaj || ''); }
+      if (r.ok) { setFirmalar(d.bulunan || []); if (!mesaj) setMesaj(d.waMesaj || ''); }
       else alert('Hata: ' + (d.hata || ''));
     } catch { alert('Bağlantı hatası'); }
     setBuluyor(false);
   };
 
+  const aiMesajYaz = async () => {
+    setAiYaziyor(true);
+    try {
+      const r = await fetch('/api/ai/mesaj-yaz', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kabaTarif, baslik: kategori, profil: imza, kanal: 'whatsapp' }) });
+      const d = await r.json();
+      if (r.ok && d.mesaj) setMesaj(d.mesaj); else alert('Yazılamadı: ' + (d.hata || ''));
+    } catch { alert('Bağlantı hatası'); }
+    setAiYaziyor(false);
+  };
+
+  const dosyaEkle = async (files: FileList | null) => {
+    if (!files) return;
+    for (const f of Array.from(files)) { if (!f.type.startsWith('image/')) continue; try { const d = await resmiKucult(f); setGorseller((g) => [...g, d]); } catch { /**/ } }
+  };
+
   const waGonder = async (f: Firma) => {
-    if (!f.telefon || !mesaj.trim()) return;
+    if (!f.telefon || (!mesaj.trim() && gorseller.length === 0)) return;
     setDurumlar((s) => ({ ...s, [f.telefon!]: 'gonderiliyor' }));
     try {
-      const r = await fetch('/api/wa/gonder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ numara: f.telefon, mesaj }) });
+      const r = await fetch('/api/wa/gonder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ numara: f.telefon, mesaj, gorseller }) });
       setDurumlar((s) => ({ ...s, [f.telefon!]: r.ok ? 'ok' : 'hata' }));
       return r.ok;
     } catch { setDurumlar((s) => ({ ...s, [f.telefon!]: 'hata' })); return false; }
@@ -69,10 +107,7 @@ export default function Whatsapp() {
     if (hedef.length === 0) return;
     if (!confirm(`${hedef.length} firmaya sırayla WhatsApp gönderilecek (numaranın banlanmaması için aralarında bekleme konur). Onaylıyor musun?`)) return;
     setToplu(true);
-    for (const f of hedef) {
-      await waGonder(f);
-      await delay(6000 + Math.random() * 4000); // 6-10 sn arası
-    }
+    for (const f of hedef) { await waGonder(f); await delay(6000 + Math.random() * 4000); }
     setToplu(false);
   };
 
@@ -122,14 +157,40 @@ export default function Whatsapp() {
 
             {firmalar.length > 0 && (
               <>
-                <Field label="WhatsApp mesajı (kısa, fiyat odaklı — düzenleyebilirsin)"><Textarea value={mesaj} onChange={(e) => setMesaj(e.target.value)} className="min-h-[100px] text-sm" /></Field>
-                <div className="flex items-center justify-between flex-wrap gap-2">
+                {/* Kaba anlat → AI yazsın */}
+                <div className="rounded-xl bg-marka-50/60 border border-marka-100 p-3 space-y-2">
+                  <p className="text-sm font-medium text-metin flex items-center gap-1.5"><Wand2 size={15} className="text-marka-500" /> İşi kabaca anlat — AI düzgün mesaja çevirsin</p>
+                  <Textarea value={kabaTarif} onChange={(e) => setKabaTarif(e.target.value)} placeholder="Örn: hafriyat lazım, yaklaşık 350 m2 alan yarım metre kazılacak, çıkan toprak arsada kalacak nakliye yok, ne zaman başlarsın fiyatın ne…" className="min-h-[80px] text-sm bg-white" />
+                  <Button size="sm" variant="soft" onClick={aiMesajYaz} disabled={aiYaziyor}>{aiYaziyor ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} AI ile mesajı yaz</Button>
+                </div>
+
+                <Field label="Gönderilecek WhatsApp mesajı (düzenleyebilirsin)"><Textarea value={mesaj} onChange={(e) => setMesaj(e.target.value)} className="min-h-[120px] text-sm" /></Field>
+
+                {/* Görseller — kare thumbnail */}
+                <div>
+                  <p className="text-sm font-medium text-metin mb-2 flex items-center gap-1.5"><ImagePlus size={15} /> Mesajla gönderilecek görseller</p>
+                  <div className="flex flex-wrap gap-2">
+                    {gorseller.map((g, i) => (
+                      <div key={i} className="relative w-20 h-20 rounded-lg overflow-hidden border border-cizgi group">
+                        <img src={g} alt="" className="w-full h-full object-cover" />
+                        <button onClick={() => setGorseller((arr) => arr.filter((_, j) => j !== i))} className="absolute top-0.5 right-0.5 bg-black/55 hover:bg-black/75 text-white rounded-full p-0.5"><X size={12} /></button>
+                      </div>
+                    ))}
+                    <label className="w-20 h-20 rounded-lg border-2 border-dashed border-cizgi hover:border-marka-400 flex flex-col items-center justify-center cursor-pointer text-metin-yum hover:text-marka-500 transition">
+                      <ImagePlus size={20} /><span className="text-[10px] mt-0.5">Ekle</span>
+                      <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => { dosyaEkle(e.target.files); e.target.value = ''; }} />
+                    </label>
+                  </div>
+                  {gorseller.length > 0 && <p className="text-xs text-metin-yum mt-1.5">{gorseller.length} görsel — mesajla birlikte gönderilecek.</p>}
+                </div>
+
+                <div className="flex items-center justify-between flex-wrap gap-2 pt-1">
                   <span className="text-sm text-metin-yum">{telefonlu.length} telefonlu firma bulundu</span>
                   <Button variant="soft" size="sm" onClick={sirayalGonder} disabled={toplu || telefonlu.length === 0}>{toplu ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Sırayla hepsine gönder</Button>
                 </div>
                 <div className="space-y-1.5">
                   {telefonlu.map((f, i) => {
-                    const d = waGonderilenDurum(durumlar, f);
+                    const d = f.telefon ? durumlar[f.telefon] : undefined;
                     return (
                       <div key={i} className="flex items-center justify-between gap-2 border-b border-cizgi/60 py-1.5">
                         <div className="text-sm min-w-0"><span className="inline-flex items-center gap-1"><Building size={13} className="text-metin-yum" /> <b>{f.ad}</b></span> <span className="text-metin-yum">· 📞 {f.telefon}</span></div>
@@ -183,5 +244,3 @@ export default function Whatsapp() {
     </>
   );
 }
-
-function waGonderilenDurum(d: Record<string, 'ok' | 'hata' | 'gonderiliyor'>, f: Firma) { return f.telefon ? d[f.telefon] : undefined; }
