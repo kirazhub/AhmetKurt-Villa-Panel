@@ -228,13 +228,19 @@ export default function Whatsapp() {
               </div>
             ) : (
               <>
-                <p className="text-sm text-metin-yum">Mesajlar arasında <b>{minDk}-{maxDk} dakika arası TAMAMEN rastgele</b> (alakasız) bekleme konur — robot gibi sabit aralık ban sebebidir.</p>
+                <p className="text-sm text-metin-yum">Mesajlar arasında <b>{minDk}-{maxDk} dakika arası TAMAMEN rastgele</b> (karışık, aritmetik değil) bekleme konur — robot gibi sabit aralık ban sebebidir.</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {([['Sık (riskli)', 1, 5], ['Normal', 3, 12], ['Güvenli', 10, 30], ['Çok güvenli', 20, 90], ['Saatlik', 60, 240]] as [string, number, number][]).map(([ad, mn, mx]) => (
+                    <button key={ad} type="button" onClick={() => { setMinDk(mn); setMaxDk(mx); }}
+                      className={`px-2.5 py-1 rounded-lg text-xs border transition cursor-pointer ${minDk === mn && maxDk === mx ? 'bg-marka-500 text-white border-marka-500' : 'bg-white border-cizgi text-metin-yum hover:border-marka-300'}`}>{ad}</button>
+                  ))}
+                </div>
                 <div className="flex items-end gap-3 flex-wrap">
-                  <div className="w-28"><Field label="En az (dk)"><Input type="number" value={minDk} min={1} onChange={(e) => setMinDk(Math.max(1, Number(e.target.value) || 1))} /></Field></div>
-                  <div className="w-28"><Field label="En çok (dk)"><Input type="number" value={maxDk} min={1} onChange={(e) => setMaxDk(Math.max(1, Number(e.target.value) || 1))} /></Field></div>
+                  <div className="w-28"><Field label="En az (dk)"><Input type="number" step="0.5" value={minDk} min={0.2} onChange={(e) => setMinDk(Math.max(0.2, Number(e.target.value) || 0.2))} /></Field></div>
+                  <div className="w-28"><Field label="En çok (dk)"><Input type="number" step="0.5" value={maxDk} min={0.2} onChange={(e) => setMaxDk(Math.max(0.2, Number(e.target.value) || 0.2))} /></Field></div>
                   <Button onClick={motorBaslat} disabled={seciliTel.length === 0 || (!mesaj.trim() && gorseller.length === 0)}><Send size={15} /> {seciliTel.length} firmaya göndermeyi başlat</Button>
                 </div>
-                <p className="text-xs text-metin-yum">⚠️ Numaran yeniyse aralığı geniş tut (örn. 5-15 dk) ve günde az sayıda gönder.</p>
+                <p className="text-xs text-metin-yum">İpucu: <b>0.5 = 30 saniye</b>, <b>60 = 1 saat</b>, <b>240 = 4 saat</b>. Aralığı geniş tutarsan (örn. 10-90) aralar hem dakika hem saat olur, daha güvenli. ⚠️ Numaran yeniyse geniş tut ve günde az gönder.</p>
               </>
             )}
           </CardBody></Card>
