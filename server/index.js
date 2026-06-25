@@ -187,6 +187,10 @@ ${kabaTarif || '(not girilmedi — konu başlığına göre mantıklı bir tekli
 });
 
 app.post('/api/wa/cikis', async (_req, res) => { await wa.cikis(); res.json({ ok: true }); });
+app.post('/api/wa/yenile', async (_req, res) => {
+  try { await wa.yenidenBagla(VERI); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ hata: String(e?.message || e) }); }
+});
 const oku = (dosya, varsayilan) => { try { return JSON.parse(readFileSync(join(VERI, dosya), 'utf8')); } catch { return varsayilan; } };
 const yaz = (dosya, veri) => { try { writeFileSync(join(VERI, dosya), JSON.stringify(veri, null, 2)); } catch (e) { console.error('yaz hata', e); } };
 

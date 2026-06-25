@@ -134,6 +134,13 @@ export default function Whatsapp() {
 
   const cikis = async () => { if (!confirm('WhatsApp bağlantısı kesilsin mi?')) return; await fetch('/api/wa/cikis', { method: 'POST' }); durumGetir(); };
 
+  const [yenileniyor, setYenileniyor] = useState(false);
+  const yenidenBagla = async () => {
+    setYenileniyor(true);
+    try { await fetch('/api/wa/yenile', { method: 'POST' }); await new Promise((r) => setTimeout(r, 3000)); await durumGetir(); } catch { /**/ }
+    setYenileniyor(false);
+  };
+
   return (
     <>
       <PageHeader baslik="WhatsApp Teklif" aciklama="Kendi hattından firmalara WhatsApp ile teklif iste, cevapları gör"
@@ -154,6 +161,10 @@ export default function Whatsapp() {
                 </ol>
               </div>
             ) : <p className="text-sm text-metin-yum flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> QR hazırlanıyor… <button onClick={durumGetir} className="underline">yenile</button></p>}
+            <div className="mt-4 pt-3 border-t border-cizgi/60">
+              <p className="text-xs text-metin-yum mb-2">QR görünmüyorsa veya bağlantı koptuysa (örn. engel sonrası), yeni QR üret:</p>
+              <Button size="sm" variant="soft" onClick={yenidenBagla} disabled={yenileniyor}>{yenileniyor ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Yeniden bağlan (yeni QR üret)</Button>
+            </div>
           </CardBody></Card>
         ) : <p className="mb-5 text-sm text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={16} /> WhatsApp <b>bağlı</b>.</p>}
 

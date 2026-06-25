@@ -6,7 +6,7 @@ import makeWASocket, { useMultiFileAuthState, DisconnectReason, Browsers, fetchL
 import qrcode from 'qrcode';
 import pino from 'pino';
 import { join } from 'path';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, rmSync } from 'fs';
 
 let sock = null;
 let qrDataUrl = null;
@@ -90,4 +90,13 @@ export async function cikis() {
   try { if (sock) await sock.logout(); } catch { /**/ }
   baglandi = false; baslatildi = false; qrDataUrl = null;
   if (existsSync(join(veriYolu, 'wa-auth'))) { try { writeFileSync(join(veriYolu, 'wa-auth', 'creds.json'), '{}'); } catch { /**/ } }
+}
+
+// Oturumu tamamen sıfırla ve yeni QR üret (engel sonrası yeniden bağlanmak için)
+export async function yenidenBagla(veriDir) {
+  const yol = veriDir || veriYolu;
+  try { if (sock) { try { await sock.logout(); } catch { /**/ } try { sock.end?.(undefined); } catch { /**/ } } } catch { /**/ }
+  sock = null; baglandi = false; qrDataUrl = null; baslatildi = false;
+  try { rmSync(join(yol, 'wa-auth'), { recursive: true, force: true }); } catch { /**/ }
+  await baslat(yol);
 }
