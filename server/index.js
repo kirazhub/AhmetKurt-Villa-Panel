@@ -224,11 +224,12 @@ app.post('/api/heic-jpg', express.raw({ type: '*/*', limit: '80mb' }), (req, res
     catch (e) { res.status(500).json({ hata: 'cikti okunamadi', detay: String(e) }); }
     finally { temizle(); }
   };
-  // Önce heif-convert, olmazsa ImageMagick convert
-  execFile('heif-convert', ['-q', '90', inPath, outPath], (err) => {
+  // Önce pillow-heif (güncel libheif), olmazsa heif-convert
+  const PY = join(__dirname, 'heic2jpg.py');
+  execFile('python3', [PY, inPath, outPath], (err) => {
     if (!err) return gonder();
-    execFile('convert', [inPath, outPath], (err2) => {
-      if (err2) { temizle(); return res.status(500).json({ hata: 'Dönüştürülemedi (libheif/imagemagick yok?)', detay: String(err2) }); }
+    execFile('heif-convert', ['-q', '90', inPath, outPath], (err2) => {
+      if (err2) { temizle(); return res.status(500).json({ hata: 'Dönüştürülemedi', detay: String(err) }); }
       gonder();
     });
   });
