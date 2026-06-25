@@ -13,7 +13,7 @@ let qrDataUrl = null;
 let baglandi = false;
 let baslatildi = false;
 let veriYolu = '';
-const logger = pino({ level: 'silent' });
+const logger = pino({ level: process.env.WA_LOG || 'silent' });
 
 // Gönderilen/gelen mesajları kısa süre saklarız; karşı taraf "tekrar gönder" (retry) isterse
 // Baileys orijinal mesajı buradan alıp yeniden şifreler → mesaj karşıya GERÇEKTEN ulaşır.
