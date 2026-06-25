@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Faz, Mahal, IsKalemi, Taseron, Teklif, Odeme, Belge, Proje, SahaGunluk, Sarfiyat, IstekKalemi, Ders, Danisma, Firma, RfqKayit } from '../types';
+import type { Faz, Mahal, IsKalemi, Taseron, Teklif, Odeme, Belge, Proje, SahaGunluk, Sarfiyat, IstekKalemi, Ders, Danisma, Firma, RfqKayit, GonderenProfil } from '../types';
 import { PROJE, FAZLAR, MAHALLER, IS_KALEMLERI, ISTEK_LISTESI } from '../data/seed';
 import { uid } from '../lib/format';
 
@@ -27,6 +27,7 @@ interface State {
   danismalar: Danisma[];   // danışma geçmişi (yerel önbellek; sunucuda da kalıcı)
   firmalar: Firma[];       // teklif toplama firma listesi
   rfqKayitlari: RfqKayit[];// gönderilen teklif istekleri
+  gonderenProfil: GonderenProfil; // teklif maili imzası
   rehberBrifing: Record<string, string>; // rehber bölüm id -> AI brifing metni (önbellek)
 
   // İş kalemleri
@@ -84,6 +85,7 @@ interface State {
   firmaGuncelle: (id: string, patch: Partial<Firma>) => void;
   firmaSil: (id: string) => void;
   rfqEkle: (r: Omit<RfqKayit, 'id'>) => string;
+  gonderenProfilGuncelle: (p: Partial<GonderenProfil>) => void;
   // Proje künyesi
   projeGuncelle: (patch: Partial<Proje>) => void;
   // Bakım
@@ -111,6 +113,7 @@ export const useStore = create<State>()(
       danismalar: [],
       firmalar: [],
       rfqKayitlari: [],
+      gonderenProfil: { ad: 'Kiraz Kurt', unvan: 'Satın Alma ve Koordinasyon Müdürü', telefon: '' },
       rehberBrifing: {},
 
       isKalemiEkle: (k) => {
@@ -241,6 +244,7 @@ export const useStore = create<State>()(
         set((s) => ({ rfqKayitlari: [...s.rfqKayitlari, { ...r, id }] }));
         return id;
       },
+      gonderenProfilGuncelle: (p) => set((s) => ({ gonderenProfil: { ...s.gonderenProfil, ...p } })),
 
       projeGuncelle: (patch) => set((s) => ({ proje: { ...s.proje, ...patch } })),
       sifirla: () =>
@@ -248,11 +252,12 @@ export const useStore = create<State>()(
           proje: PROJE, fazlar: FAZLAR, mahaller: MAHALLER, isKalemleri: IS_KALEMLERI,
           taseronlar: [], teklifler: [], odemeler: [], belgeler: [], sahaGunlukleri: [], sarfiyatlar: [], rehberBrifing: {},
           istekListesi: ISTEK_LISTESI, istekBrifing: '', dersler: [], firmalar: [], rfqKayitlari: [],
+          gonderenProfil: { ad: 'Kiraz Kurt', unvan: 'Satın Alma ve Koordinasyon Müdürü', telefon: '' },
         }),
 
       disaAktar: () => {
-        const { proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler, sahaGunlukleri, sarfiyatlar, istekListesi, istekBrifing, rehberBrifing, dersler, firmalar, rfqKayitlari } = get();
-        return JSON.stringify({ proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler, sahaGunlukleri, sarfiyatlar, istekListesi, istekBrifing, rehberBrifing, dersler, firmalar, rfqKayitlari }, null, 2);
+        const { proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler, sahaGunlukleri, sarfiyatlar, istekListesi, istekBrifing, rehberBrifing, dersler, firmalar, rfqKayitlari, gonderenProfil } = get();
+        return JSON.stringify({ proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler, sahaGunlukleri, sarfiyatlar, istekListesi, istekBrifing, rehberBrifing, dersler, firmalar, rfqKayitlari, gonderenProfil }, null, 2);
       },
       iceAktar: (json) => {
         try {
@@ -274,6 +279,7 @@ export const useStore = create<State>()(
             dersler: d.dersler ?? [],
             firmalar: d.firmalar ?? [],
             rfqKayitlari: d.rfqKayitlari ?? [],
+            gonderenProfil: d.gonderenProfil ?? { ad: 'Kiraz Kurt', unvan: 'Satın Alma ve Koordinasyon Müdürü', telefon: '' },
           });
           return true;
         } catch {

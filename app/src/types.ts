@@ -273,3 +273,12 @@ export interface RfqKayit {
   durum: 'gonderildi' | 'hata';
   hata?: string;
 }
+
+// ============================================================================
+// GÖNDEREN PROFİLİ — Teklif maillerinin imzası
+// ============================================================================
+export interface GonderenProfil {
+  ad: string;
+  unvan: string;
+  telefon?: string;
+}

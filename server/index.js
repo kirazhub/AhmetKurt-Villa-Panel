@@ -212,6 +212,23 @@ app.delete('/api/danisma/:id', (req, res) => {
 app.post('/api/yedek', (req, res) => { yaz('durum.json', { tarih: new Date().toISOString(), durum: req.body?.durum ?? req.body }); res.json({ ok: true, tarih: new Date().toISOString() }); });
 app.get('/api/yedek', (_req, res) => res.json(oku('durum.json', null)));
 
+// --- AI ile firma bul (web araştırması → JSON firma listesi) ---
+app.post('/api/firma-bul', async (req, res) => {
+  if (!yapilandirilmis()) return res.status(503).json({ hata: 'OpenRouter anahtarı yok' });
+  try {
+    const { kategori = 'hafriyat', bolge = 'İstanbul Avrupa Yakası / Arnavutköy' } = req.body || {};
+    const sys = 'Sen bir tedarikçi/firma araştırma asistanısın. Web aramasıyla GERÇEK firmalar bulursun. Yanıtın SADECE geçerli JSON dizisi olmalı; öncesinde/sonrasında hiçbir açıklama yazma.';
+    const soru = `"${bolge}" bölgesinde "${kategori}" işi yapan firmaları web'de araştır. Her firma için yalnızca kaynakta GERÇEKTEN gördüğün bilgileri yaz. Çıktı KESİNLİKLE şu formatta saf JSON olsun: [{"ad":"","email":"","telefon":"","web":"","sehir":""}] . E-posta bulamazsan "email" alanını boş bırak — UYDURMA. 10-15 firma hedefle.`;
+    const { metin } = await claudeWeb(sys, soru, 2500);
+    let arr = [];
+    const m = metin.match(/\[[\s\S]*\]/);
+    try { arr = JSON.parse(m ? m[0] : metin); } catch { arr = []; }
+    res.json({ firmalar: Array.isArray(arr) ? arr : [], ham: Array.isArray(arr) && arr.length ? undefined : metin.slice(0, 1500) });
+  } catch (e) {
+    res.status(500).json({ hata: 'Firma araştırması başarısız', detay: String(e?.message || e) });
+  }
+});
+
 // --- HEIC -> JPG dönüştürme (sunucuda pillow-heif/libheif ile, güvenilir) ---
 app.post('/api/heic-jpg', express.raw({ type: '*/*', limit: '80mb' }), (req, res) => {
   if (!req.body || !req.body.length) return res.status(400).json({ hata: 'Dosya gelmedi' });
