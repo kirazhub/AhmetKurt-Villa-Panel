@@ -235,6 +235,45 @@ app.post('/api/firma-bul', async (req, res) => {
   }
 });
 
+// --- TEK TIKLA OTOMATİK TEKLİF: firma bul + mail yaz + gönder ---
+app.post('/api/teklif-otomatik', async (req, res) => {
+  if (!yapilandirilmis()) return res.status(503).json({ hata: 'OpenRouter anahtarı yok' });
+  try {
+    const { kategori = 'Hafriyat / Kazı', bolge = 'İstanbul Avrupa Yakası / Arnavutköy', sorular = '', imza = '', ekler = [], projeNot = '' } = req.body || {};
+
+    // 1) Firmaları web'de bul (JSON)
+    const bulSys = 'Sen tedarikçi/firma araştırma asistanısın. Web aramasıyla GERÇEK firmalar bulursun. Yanıtın SADECE geçerli JSON dizisi olmalı, başka metin yok.';
+    const bulSoru = `"${bolge}" bölgesinde "${kategori}" işi yapan firmaları web'de KAPSAMLI araştır (gerekirse 50-100 firma tara). ÇOK ÖNEMLİ: SADECE web'de GERÇEK, geçerli bir İLETİŞİM E-POSTA adresi yayınlamış firmaları döndür. E-postası olmayan firmayı LİSTELEME. Hedef: e-postası olan en az 20 firma. Çıktı KESİN saf JSON: [{"ad":"","email":"","telefon":"","web":"","sehir":""}] . E-postayı UYDURMA; kaynakta gerçekten varsa yaz, yoksa o firmayı hiç ekleme.`;
+    const { metin: firmaMetin } = await claudeWeb(bulSys, bulSoru, 3500);
+    let firmalar = [];
+    const mm = firmaMetin.match(/\[[\s\S]*\]/);
+    try { firmalar = JSON.parse(mm ? mm[0] : firmaMetin); } catch { firmalar = []; }
+    if (!Array.isArray(firmalar)) firmalar = [];
+    const gecerli = (e) => typeof e === 'string' && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e) && !/example\.com$/i.test(e);
+    const emailli = firmalar.filter((f) => gecerli(f.email));
+
+    // 2) Teklif mailini yaz (AI)
+    const { metin: govde } = await claude(
+      'Sen kıdemli bir satın alma uzmanısın; firmalara gönderilecek profesyonel teklif maili yazarsın. Sadece e-posta gövdesini yaz.',
+      [{ role: 'user', icerik: `"${kategori}" işi için İstanbul'daki firmalara gönderilecek profesyonel, kısa-net TEKLİF İSTEME e-postası yaz. Proje: Ahmet Kurt Villa, İstanbul/Arnavutköy/Boyalık, arsa HAFİF EĞİMLİ. ${projeNot}. "Öncelikle fiyat ve süre öğrenmek istiyoruz" vurgusu olsun. Şu soruları madde madde sor:\n${sorular}\nSonunda şu imzayla bitir:\n${imza}\nTürkçe, resmi ama sıcak. Sadece gövde, konu satırı yazma.` }],
+      1200,
+    );
+    const konu = `Teklif Talebi — ${kategori} — Ahmet Kurt Villa Projesi`;
+
+    // 3) E-postası olanlara gönder
+    let gonderilen = 0;
+    if (mailHazir() && emailli.length > 0) {
+      const attachments = (ekler || []).map((e) => ({ filename: e.ad, content: Buffer.from(String(e.base64 || ''), 'base64') }));
+      await transport().sendMail({ from: `Ahmet Kurt Villa Projesi <${MAIL_USER}>`, to: MAIL_USER, bcc: emailli.map((f) => f.email), subject: konu, text: govde, attachments });
+      gonderilen = emailli.length;
+    }
+
+    res.json({ bulunan: emailli, toplamTaranan: firmalar.length, emailliSayi: emailli.length, gonderilen, konu, govde, mailHazir: mailHazir() });
+  } catch (e) {
+    res.status(500).json({ hata: 'Otomatik teklif başarısız', detay: String(e?.message || e) });
+  }
+});
+
 // --- HEIC -> JPG dönüştürme (sunucuda pillow-heif/libheif ile, güvenilir) ---
 app.post('/api/heic-jpg', express.raw({ type: '*/*', limit: '80mb' }), (req, res) => {
   if (!req.body || !req.body.length) return res.status(400).json({ hata: 'Dosya gelmedi' });
