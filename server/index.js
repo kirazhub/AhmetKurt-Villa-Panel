@@ -400,6 +400,11 @@ app.get('/api/mail/gelenler', async (req, res) => {
 // Üretimde derlenmiş paneli de servis et (varsa)
 app.use(express.static(join(__dirname, '..', 'app', 'dist')));
 
+// SPA fallback: /api dışındaki tüm yollar panele (index.html) gitsin
+app.get(/^(?!\/api).*/, (_req, res) => {
+  res.sendFile(join(__dirname, '..', 'app', 'dist', 'index.html'));
+});
+
 app.listen(PORT, () => {
   console.log(`AI arka uç (OpenRouter) çalışıyor → http://localhost:${PORT}`);
   console.log(`OpenRouter anahtarı: ${yapilandirilmis() ? 'TANIMLI ✓' : 'EKSİK (.env doldur) ✗'}`);
