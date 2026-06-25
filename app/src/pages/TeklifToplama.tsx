@@ -17,6 +17,7 @@ export default function TeklifToplama() {
   const [mailHazir, setMailHazir] = useState<boolean | null>(null);
   const [mailAdres, setMailAdres] = useState('');
   const [profilAcik, setProfilAcik] = useState(false);
+  const [teknikDetay, setTeknikDetay] = useState(true);
 
   // 1) Mesaj hazırlama
   const [kategori, setKategori] = useState('Hafriyat / Kazı');
@@ -75,7 +76,7 @@ export default function TeklifToplama() {
     try {
       const r = await fetch('/api/teklif-mail-yaz', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kategori, bolge, sorular, imza: imzaMetni(), kabaNot, proje: JSON.stringify(proje), specler: speclerTopla() }),
+        body: JSON.stringify({ kategori, bolge, sorular, imza: imzaMetni(), kabaNot, proje: JSON.stringify(proje), specler: speclerTopla(), teknikDetay }),
       });
       const d = await r.json();
       if (r.ok) { setGovde(d.govde || ''); setKonu(d.konu || `Teklif Talebi — ${kategori}`); }
@@ -173,8 +174,11 @@ export default function TeklifToplama() {
           <Textarea value={kabaNot} onChange={(e) => setKabaNot(e.target.value)} placeholder="Ne istediğini kendi cümlelerinle yaz. Örn: alüminyum doğrama lazım, ısıcam istiyorum, fiyat ve süre öğrenmek istiyorum…" className="min-h-[90px] text-sm bg-white" />
           <div className="flex items-center gap-2 flex-wrap">
             <Button size="sm" variant="soft" onClick={mailYaz} disabled={mailYaziyor}>{mailYaziyor ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} AI ile profesyonel yazıya dök</Button>
-            <span className="text-xs text-metin-yum">{specliSayi > 0 ? `${specliSayi} belgeden teknik ölçü/m²/malzeme bilgisi de eklenir.` : 'Proje künyesi otomatik eklenir.'}</span>
+            <button type="button" onClick={() => setTeknikDetay((v) => !v)} className="inline-flex items-center gap-1.5 text-xs text-metin cursor-pointer">
+              {teknikDetay ? <CheckSquare size={15} className="text-marka-500" /> : <Square size={15} className="text-metin-yum" />} Teknik detay ekle (m² / malzeme / süre)
+            </button>
           </div>
+          <span className="text-xs text-metin-yum">{specliSayi > 0 ? `${specliSayi} belgeden teknik ölçü/m²/malzeme bilgisi de eklenir.` : 'Proje künyesi otomatik eklenir.'} Bütçe/fiyat yazılmaz — onu firma verir.</span>
         </div>
 
         <Field label="Eklemek istediğin özel sorular (opsiyonel)"><Textarea value={sorular} onChange={(e) => setSorular(e.target.value)} placeholder="Boş bırak — AI zaten fiyat, malzeme, süre, referans, ödeme, garanti gibi soruları sorar." className="min-h-[60px] text-xs" /></Field>

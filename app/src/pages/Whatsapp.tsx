@@ -29,6 +29,8 @@ function resmiKucult(file: File): Promise<string> {
 
 export default function Whatsapp() {
   const gonderenProfil = useStore((s) => s.gonderenProfil);
+  const belgeler = useStore((s) => s.belgeler);
+  const proje = useStore((s) => s.proje);
   const [durum, setDurum] = useState<{ baglandi: boolean; qr: string | null } | null>(null);
   const [yenileniyor, setYenileniyor] = useState(false);
   const [gelenler, setGelenler] = useState<Gelen[]>([]);
@@ -40,6 +42,7 @@ export default function Whatsapp() {
   const [kabaNot, setKabaNot] = useState('');
   const [mesaj, setMesaj] = useState('');
   const [aiYaziyor, setAiYaziyor] = useState(false);
+  const [teknikDetay, setTeknikDetay] = useState(true);
   const [gorseller, setGorseller] = useState<string[]>([]);
 
   // 2) Firma
@@ -66,12 +69,13 @@ export default function Whatsapp() {
   const telefonlu = firmalar.filter((f) => f.telefon);
   const seciliTel = telefonlu.filter((f) => secili[f.telefon!]);
   const imza = `${gonderenProfil.ad}\n${gonderenProfil.unvan}`;
+  const speclerTopla = () => belgeler.filter((b) => b.spec).map((b) => `### ${b.ad}\n${b.spec}`).join('\n\n');
 
   // AI ile WhatsApp mesajı yaz / düzelt
   const aiYaz = async () => {
     setAiYaziyor(true);
     try {
-      const r = await fetch('/api/ai/mesaj-yaz', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kabaTarif: kabaNot || mesaj, baslik: kategori, profil: imza, kanal: 'whatsapp' }) });
+      const r = await fetch('/api/ai/mesaj-yaz', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kabaTarif: kabaNot || mesaj, baslik: kategori, profil: imza, kanal: 'whatsapp', teknikDetay, proje: teknikDetay ? JSON.stringify(proje) : '', specler: teknikDetay ? speclerTopla() : '' }) });
       const d = await r.json();
       if (r.ok && d.mesaj) setMesaj(d.mesaj); else alert('Yazılamadı: ' + (d.hata || ''));
     } catch { alert('Bağlantı hatası'); }
@@ -154,7 +158,12 @@ export default function Whatsapp() {
             <div className="rounded-xl bg-marka-50/60 border border-marka-100 p-3 space-y-1.5">
               <p className="text-sm font-medium text-metin flex items-center gap-1.5"><Wand2 size={15} className="text-marka-500" /> İşi kısaca anlat — AI WhatsApp mesajına çevirir (kısa-net)</p>
               <Textarea value={kabaNot} onChange={(e) => setKabaNot(e.target.value)} placeholder="Örn: hafriyat lazım, ~350 m² yarım metre kazı, toprak arsada kalır nakliye yok, fiyat ve ne zaman başlanır öğrenmek istiyorum…" className="min-h-[80px] text-sm bg-white" />
-              <Button size="sm" variant="soft" onClick={aiYaz} disabled={aiYaziyor}>{aiYaziyor ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} AI ile yaz / düzelt</Button>
+              <div className="flex items-center gap-3 flex-wrap">
+                <Button size="sm" variant="soft" onClick={aiYaz} disabled={aiYaziyor}>{aiYaziyor ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} AI ile yaz / düzelt</Button>
+                <button type="button" onClick={() => setTeknikDetay((v) => !v)} className="inline-flex items-center gap-1.5 text-xs text-metin cursor-pointer">
+                  {teknikDetay ? <CheckSquare size={15} className="text-marka-500" /> : <Square size={15} className="text-metin-yum" />} Teknik detay ekle (m² / malzeme / süre)
+                </button>
+              </div>
             </div>
 
             <Field label="Gönderilecek WhatsApp mesajı (düzenleyebilirsin)"><Textarea value={mesaj} onChange={(e) => setMesaj(e.target.value)} className="min-h-[120px] text-sm" placeholder="Buraya kendi mesajını da yazabilirsin; 'AI ile düzelt' ile profesyonelleştir." /></Field>

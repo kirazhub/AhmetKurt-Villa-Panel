@@ -289,21 +289,25 @@ app.post('/api/wa/gonder', async (req, res) => {
 app.post('/api/ai/mesaj-yaz', async (req, res) => {
   if (!yapilandirilmis()) return res.status(503).json({ hata: 'OpenRouter API anahtarı tanımlı değil (.env).' });
   try {
-    const { kabaTarif = '', baslik = '', profil = '', kanal = 'whatsapp' } = req.body || {};
+    const { kabaTarif = '', baslik = '', profil = '', kanal = 'whatsapp', specler = '', proje = '', teknikDetay = false } = req.body || {};
     const sys = `Sen "Ahmet Kurt Villa Projesi"nin satın alma ve koordinasyon yöneticisi adına yazan, çok iyi Türkçe yazan profesyonel bir asistansın. Görevin: kullanıcının dağınık/eksik notlarını, firmaya gönderilecek DÜZGÜN, KISA ve NET bir ${kanal === 'whatsapp' ? 'WhatsApp' : 'e-posta'} mesajına dönüştürmek.
 
 KURALLAR:
 - Selamla, kısaca kendini/projeyi tanıt, ne istediğini net yaz, fiyat + termin (ne zaman başlanır/biter) iste, iletişim için teşekkür et.
 - Kullanıcının AKLINA GELMEYEN ama firmanın doğru teklif vermesi için GEREKEN detayları kibarca SOR veya belirt (örn. işin bölgesi/adresi, yaklaşık ölçü/miktar, malzeme dahil mi, keşif için saha daveti, son teklif tarihi).
 - Proje bağlamı: İstanbul/Arnavutköy/Boyalık'ta lüks villa şantiyesi. İlgiliyse kullan, zorlama.
-- Kısa tut (WhatsApp için 4-8 satır). Resmi ama samimi. Abartı/emoji YOK ya da en fazla 1 tane.
+${teknikDetay ? `- TEKNİK DESTEK: Aşağıdaki teknik verilerden işin KAPSAMINI somutlaştır — yaklaşık METRAJ (m²/m³), ana MALZEME kalemleri ve tahmini miktar, öngörülen SÜRE. Bunları kısaca mesaja kat ki firma daha doğru teklif versin. Emin olmadığın değeri "yaklaşık/tahmini" diye belirt, uydurma.` : ''}
+- Kendi bütçe/maliyet rakamımızı firmaya KESİNLİKLE YAZMA; fiyatı firma versin — bizden detaylı fiyat teklifi istemesini sağla.
+- Kısa tut (WhatsApp için 6-12 satır; teknik detay varsa biraz daha uzun olabilir ama özlü). Resmi ama samimi. Abartı/emoji YOK ya da en fazla 1 tane.
 - SADECE mesaj metnini döndür. Başlık, açıklama, "işte mesajınız" gibi ekleme yapma.`;
     const kullanici = `Konu/iş başlığı: ${baslik || '(belirtilmedi)'}
 Gönderen kişi: ${profil || '(belirtilmedi)'}
 
 Kullanıcının kaba notları / yapılacak iş:
-${kabaTarif || '(not girilmedi — konu başlığına göre mantıklı bir teklif isteği yaz)'}`;
-    const { metin } = await claude(sys, [{ role: 'user', icerik: kullanici }], 900);
+${kabaTarif || '(not girilmedi — konu başlığına göre mantıklı bir teklif isteği yaz)'}
+${teknikDetay && proje ? `\nPROJE KÜNYESİ:\n${String(proje).slice(0, 2500)}` : ''}
+${teknikDetay && specler ? `\nBELGELERDEN ÇIKARILMIŞ TEKNİK VERİLER (ölçü/m²/kot/malzeme):\n${String(specler).slice(0, 6000)}` : ''}`;
+    const { metin } = await claude(sys, [{ role: 'user', icerik: kullanici }], teknikDetay ? 1300 : 900);
     res.json({ mesaj: metin });
   } catch (e) {
     res.status(e.status || 500).json({ hata: 'Mesaj yazılamadı', detay: e.detay || String(e?.message || e) });
@@ -526,7 +530,7 @@ app.post('/api/firma-bul', async (req, res) => {
 app.post('/api/teklif-mail-yaz', async (req, res) => {
   if (!yapilandirilmis()) return res.status(503).json({ hata: 'OpenRouter anahtarı yok' });
   try {
-    const { kategori = '', bolge = 'İstanbul', sorular = '', imza = '', kabaNot = '', proje = '', specler = '' } = req.body || {};
+    const { kategori = '', bolge = 'İstanbul', sorular = '', imza = '', kabaNot = '', proje = '', specler = '', teknikDetay = true } = req.body || {};
     const mailSys = `Sen "Ahmet Kurt Villa Projesi"nin satın alma ve teknik koordinasyon yöneticisi adına yazan, çok deneyimli bir inşaat satın alma uzmanısın. Görevin: profesyonel taşeron/tedarikçi firmalara gönderilecek DETAYLI, bilgi verici ve net bilgi isteyici bir teklif e-postası yazmak. Profesyonel firmalar; işin kapsamını, ölçüleri ve beklentileri net anlatan, ciddi hazırlanmış talepleri ciddiye alır. Resmi ama akıcı bir dil kullan. SADECE e-posta gövdesini yaz (konu satırı ekleme, ön/son açıklama yazma).`;
     const mailIstem = `İŞ / KATEGORİ: ${kategori}
 BÖLGE: ${bolge}
@@ -543,7 +547,9 @@ ${kabaNot || '(serbest not girilmedi — kategoriye uygun standart kapsamı yaz)
 GÖREV: Yukarıdaki bilgilerle, "${kategori}" işi için PROFESYONEL bir firmaya gönderilecek DETAYLI teklif isteme e-postası yaz:
 - Kibar açılış + projeyi kısaca tanıt (ad, konum, ölçek/m², yapı tipi, kat durumu).
 - Yapılacak işin KAPSAMINI net ve teknik anlat; elindeki ölçüleri, m²'leri, kotları, malzeme bilgilerini SOMUT olarak belirt. Yoksa firmadan bu detayları netleştirmesini iste.
+${teknikDetay ? '- TEKNİK DESTEK: Teknik verilerden işin yaklaşık METRAJINI (m²/m³), ana MALZEME kalemlerini ve tahmini miktarını, öngörülen SÜREYİ kısaca belirt (firmanın doğru teklif vermesi için). Emin olmadığını "yaklaşık/tahmini" diye yaz, uydurma.' : ''}
 - Firmadan KAPSAMLI teklif iste: kalem kalem birim fiyatlar, malzeme dahil mi (hangi markalar/kalite seçenekleri), iş süresi, başlangıç tarihi, ekip/ekipman, benzer referans işler, ödeme koşulları, garanti/kalite belgeleri, keşif için saha daveti.
+- Kendi bütçe/maliyet rakamımızı firmaya KESİNLİKLE YAZMA; fiyatı tamamen firma versin.
 ${sorular ? `- Ayrıca şu özel soruları da sor:\n${sorular}` : ''}
 - Şu imzayla bitir:\n${imza}
 
