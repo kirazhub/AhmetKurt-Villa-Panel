@@ -323,66 +323,70 @@ const yaz = (dosya, veri) => { try { writeFileSync(join(VERI, dosya), JSON.strin
 // Kullanıcı 1 kez başlatır; sunucu sıradakini kendi gönderir (tarayıcı kapansa da).
 // Aralık + her seferinde RASTGELE sapma (sabit aralık da ban sebebidir).
 // ============================================================================
-let kuyruk = oku('wa-kuyruk.json', null); // {aktif, mesaj, gorseller, aralikDk, items:[{numara,ad,durum,zaman,hata}], sonGonderimMs}
+let kuyruk = oku('wa-kuyruk.json', null); // {aktif, mesaj, gorseller, minDk, maxDk, items, sonGonderimMs, sonrakiMs, sonrakiDk}
 let kuyrukTimer = null;
 
 function kuyrukKaydet() { yaz('wa-kuyruk.json', kuyruk); }
 function kuyrukSiradaki() { return kuyruk?.items?.find((i) => i.durum === 'bekliyor'); }
-function jitterMs(aralikDk) {
-  const taban = Math.max(1, Number(aralikDk) || 5) * 60 * 1000;
-  return Math.round(taban * (0.75 + Math.random() * 0.5)); // ±%25 rastgele sapma
+
+// min-max arası TAMAMEN rastgele (alakasız) dakika seç → ms; planı kaydet
+function kuyrukPlanla() {
+  const min = Math.max(0.5, Number(kuyruk.minDk) || 2);
+  const max = Math.max(min, Number(kuyruk.maxDk) || 9);
+  const dk = min + Math.random() * (max - min);
+  kuyruk.sonrakiDk = Math.round(dk * 10) / 10;
+  const ms = Math.round(dk * 60000);
+  kuyruk.sonrakiMs = Date.now() + ms;
+  kuyrukKaydet();
+  return ms;
 }
 
 async function kuyrukAdim() {
   kuyrukTimer = null;
   if (!kuyruk || !kuyruk.aktif) return;
   const it = kuyrukSiradaki();
-  if (!it) { kuyruk.aktif = false; kuyrukKaydet(); return; }
-  if (!wa.durum().baglandi) { // bağlı değilse 1 dk sonra tekrar dene
-    kuyrukTimer = setTimeout(kuyrukAdim, 60 * 1000); return;
-  }
+  if (!it) { kuyruk.aktif = false; kuyruk.sonrakiMs = 0; kuyrukKaydet(); return; }
+  if (!wa.durum().baglandi) { kuyrukTimer = setTimeout(kuyrukAdim, 60 * 1000); return; } // bağlı değil → 1 dk sonra
   try { await wa.gonder(it.numara, kuyruk.mesaj || '', kuyruk.gorseller); it.durum = 'gonderildi'; }
   catch (e) { it.durum = 'hata'; it.hata = String(e?.message || e); }
   it.zaman = new Date().toISOString();
   kuyruk.sonGonderimMs = Date.now();
-  kuyrukKaydet();
-  if (kuyrukSiradaki()) { kuyrukTimer = setTimeout(kuyrukAdim, jitterMs(kuyruk.aralikDk)); }
-  else { kuyruk.aktif = false; kuyrukKaydet(); }
+  if (kuyrukSiradaki()) { const ms = kuyrukPlanla(); kuyrukTimer = setTimeout(kuyrukAdim, ms); }
+  else { kuyruk.aktif = false; kuyruk.sonrakiMs = 0; kuyrukKaydet(); }
 }
 
 function kuyrukDurumu() {
   if (!kuyruk) return { aktif: false, items: [] };
   const bekleyen = (kuyruk.items || []).filter((i) => i.durum === 'bekliyor').length;
   let sonrakiSn = null;
-  if (kuyruk.aktif && bekleyen > 0 && kuyruk.sonGonderimMs) {
-    sonrakiSn = Math.max(0, Math.round((kuyruk.sonGonderimMs + Math.max(1, kuyruk.aralikDk) * 60000 - Date.now()) / 1000));
-  }
-  return { aktif: !!kuyruk.aktif, aralikDk: kuyruk.aralikDk, gorselSayi: (kuyruk.gorseller || []).length, items: (kuyruk.items || []).map(({ numara, ad, durum, zaman, hata }) => ({ numara, ad, durum, zaman, hata })), bekleyen, sonrakiSn };
+  if (kuyruk.aktif && bekleyen > 0 && kuyruk.sonrakiMs) sonrakiSn = Math.max(0, Math.round((kuyruk.sonrakiMs - Date.now()) / 1000));
+  return { aktif: !!kuyruk.aktif, minDk: kuyruk.minDk, maxDk: kuyruk.maxDk, sonrakiDk: kuyruk.sonrakiDk, gorselSayi: (kuyruk.gorseller || []).length, items: (kuyruk.items || []).map(({ numara, ad, durum, zaman, hata }) => ({ numara, ad, durum, zaman, hata })), bekleyen, sonrakiSn };
 }
 
 // Sunucu açılışında yarım kalan kuyruğu devam ettir
 if (kuyruk?.aktif && kuyrukSiradaki()) {
-  const gecen = Date.now() - (kuyruk.sonGonderimMs || 0);
-  const kalan = Math.max(3000, Math.max(1, kuyruk.aralikDk) * 60000 - gecen);
+  const kalan = kuyruk.sonrakiMs ? Math.max(3000, kuyruk.sonrakiMs - Date.now()) : 5000;
   kuyrukTimer = setTimeout(kuyrukAdim, kalan);
 }
 
 app.post('/api/wa/kuyruk-baslat', (req, res) => {
   try {
-    const { hedefler = [], mesaj = '', gorseller = [], aralikDk = 5 } = req.body || {};
+    const { hedefler = [], mesaj = '', gorseller = [], minDk = 2, maxDk = 9 } = req.body || {};
     const temiz = hedefler.filter((h) => h && h.numara);
     if (temiz.length === 0) return res.status(400).json({ hata: 'Gönderilecek firma yok' });
     if (!mesaj.trim() && (!Array.isArray(gorseller) || gorseller.length === 0)) return res.status(400).json({ hata: 'Mesaj veya görsel gerekli' });
     if (kuyruk?.aktif && kuyrukSiradaki()) return res.status(409).json({ hata: 'Zaten aktif bir gönderim var. Önce durdur.' });
     if (kuyrukTimer) { clearTimeout(kuyrukTimer); kuyrukTimer = null; }
+    const mn = Math.max(0.5, Number(minDk) || 2);
+    const mx = Math.max(mn, Number(maxDk) || 9);
     kuyruk = {
-      aktif: true, mesaj, gorseller: Array.isArray(gorseller) ? gorseller : [], aralikDk: Math.max(1, Number(aralikDk) || 5),
+      aktif: true, mesaj, gorseller: Array.isArray(gorseller) ? gorseller : [], minDk: mn, maxDk: mx,
       items: temiz.map((h) => ({ numara: h.numara, ad: h.ad || h.numara, durum: 'bekliyor', zaman: null, hata: null })),
-      sonGonderimMs: 0, baslangic: new Date().toISOString(),
+      sonGonderimMs: 0, sonrakiMs: 0, sonrakiDk: null, baslangic: new Date().toISOString(),
     };
     kuyrukKaydet();
-    kuyrukAdim(); // ilkini hemen gönder, gerisi aralıkla
-    res.json({ ok: true, toplam: temiz.length, aralikDk: kuyruk.aralikDk });
+    kuyrukAdim(); // ilkini hemen gönder, gerisi rastgele aralıklarla
+    res.json({ ok: true, toplam: temiz.length, minDk: mn, maxDk: mx });
   } catch (e) { res.status(500).json({ hata: String(e?.message || e) }); }
 });
 
