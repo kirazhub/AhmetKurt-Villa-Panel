@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react';
-import { FileText, CalendarCheck, CalendarClock, AlertTriangle, Wallet, Loader2, Printer, Copy, KeyRound, RefreshCw, Sparkles } from 'lucide-react';
+import { FileText, CalendarCheck, CalendarClock, AlertTriangle, Wallet, Loader2, Printer, Copy, KeyRound, RefreshCw, Sparkles, Users } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { PageHeader, Card, CardBody, Button } from '../components/ui';
 import { tl, tarih, bugun, sayi } from '../lib/format';
-import { toplamPlanlanan, toplamGerceklesen, genelIlerleme, fazOzet, gecikenler } from '../lib/calc';
+import { toplamPlanlanan, toplamGerceklesen, genelIlerleme, fazOzet, gecikenler, taseronOdemeToplam, kalemPlanlanan } from '../lib/calc';
 import { BIRIM_ETIKET } from '../types';
 
-type RaporTur = 'gunluk' | 'haftalik' | 'geciken' | 'maliyet';
+type RaporTur = 'gunluk' | 'haftalik' | 'geciken' | 'maliyet' | 'performans';
 
 const RAPORLAR: { tur: RaporTur; ad: string; ikon: React.ReactNode; aciklama: string; talimat: string }[] = [
   { tur: 'gunluk', ad: 'Günlük Rapor', ikon: <CalendarCheck size={18} />, aciklama: 'Bugünün durumu, yapılanlar, dikkat', talimat: 'Bugünün GÜNLÜK ŞANTİYE RAPORUNU yaz: panelin ve saha kayıtlarının anlık durumuna göre bugün/son durumda ne yapıldı, ne yapılmalı, hangi riske dikkat. Kısa başlıklar + maddeler.' },
   { tur: 'haftalik', ad: 'Haftalık Plan', ikon: <CalendarClock size={18} />, aciklama: 'Önümüzdeki hafta yapılacaklar', talimat: 'HAFTALIK YAPILACAKLAR planını yaz: önümüzdeki 7 gün hangi işlere odaklanmalı, hangi teklifler/siparişler verilmeli, hangi kontroller yapılmalı. Öncelik sırasıyla, maddeler halinde.' },
   { tur: 'geciken', ad: 'Geciken İşler', ikon: <AlertTriangle size={18} />, aciklama: 'Gecikenler ve telafi planı', talimat: 'GECİKEN İŞLER raporunu yaz: hangi işler gecikmiş, neden risk, nasıl telafi edilir. Gecikme yoksa olası darboğazları ve önleyici adımları yaz.' },
   { tur: 'maliyet', ad: 'Maliyet Raporu', ikon: <Wallet size={18} />, aciklama: 'Sarfiyat + bütçe + maliyet analizi', talimat: 'Detaylı MALİYET RAPORU yaz: girilen malzeme sarfiyatı ve birim fiyatlara göre harcama analizi, planlanan vs gerçekleşen, hangi kalemde sapma/risk var, maliyet düşürme önerileri. Rakamları kullan, sade yorumla.' },
+  { tur: 'performans', ad: 'Ekip Performansı', ikon: <Users size={18} />, aciklama: 'Hangi ekip verimli, kime güven', talimat: 'EKİP / TAŞERON PERFORMANS değerlendirmesi yaz: aşağıdaki taşeron verilerine göre hangi ekip işini zamanında ve bütçesinde yapıyor, hangisi geciktiriyor/aşıyor; işçi-gün ve sarfiyata göre verimlilik yorumu. Her ekibe kısa not + yıldız/puan (1-5) + bir sonraki kararda kime öncelik, kime dikkat. SADECE verilen veriye dayan; veri azsa hangi veriyi (örn. taşeron ataması, saha kaydı) girmem gerektiğini söyle. Tahmin yürütme.' },
 ];
 
 function Bicimli({ metin }: { metin: string }) {
@@ -51,6 +52,14 @@ export default function Raporlar() {
       s.sarfiyatlar.forEach((x) => { const e = m.get(x.malzeme) || { miktar: 0, tutar: 0, birim: BIRIM_ETIKET[x.birim] }; e.miktar += x.miktar; e.tutar += x.tutar || 0; m.set(x.malzeme, e); });
       return [...m.entries()].map(([ad, e]) => `  - ${ad}: ${sayi(e.miktar, 1)} ${e.birim}, ${tl(e.tutar)}`).join('\n') || '  (kayıt yok)';
     })();
+    const taseronSatir = s.taseronlar.map((t) => {
+      const isler = s.isKalemleri.filter((k) => k.taseronId === t.id);
+      const tamam = isler.filter((k) => k.durum === 'tamamlandi').length;
+      const gec = gecikenler(isler, bugun()).length;
+      const planT = isler.reduce((x, k) => x + kalemPlanlanan(k), 0);
+      const odenen = taseronOdemeToplam(s.odemeler, t.id);
+      return `  - ${t.ad}${t.firma ? ' (' + t.firma + ')' : ''} [${t.uzmanlik}]: ${isler.length} iş, ${tamam} bitti, ${gec} geciken, planlanan ${tl(planT)}, ödenen ${tl(odenen)}${t.performans ? ', not ' + t.performans + '/5' : ''}`;
+    }).join('\n') || '  (taşeron atanmamış)';
     return `TARİH: ${tarih(bugun())}
 GENEL İLERLEME: %${Math.round(genelIlerleme(s.isKalemleri))}
 BÜTÇE: planlanan ${tl(plan)}, gerçekleşen ${tl(ger)}, fark ${tl(plan - ger)}
@@ -58,6 +67,8 @@ GECİKEN İŞLER: ${geciken.length ? geciken.map((g) => g.ad).join(', ') : 'yok'
 TAŞERON SAYISI: ${s.taseronlar.length} | TOPLAM ÖDENEN: ${tl(s.odemeler.reduce((t, o) => t + o.tutar, 0))}
 FAZ DURUMLARI:
 ${fazSatir}
+TAŞERON / EKİP PERFORMANSI:
+${taseronSatir}
 SON SAHA KAYITLARI:
 ${sahaSon}
 MALZEME SARFİYATI (toplam ${tl(sarfToplam)}):

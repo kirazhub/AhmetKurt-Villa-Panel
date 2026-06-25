@@ -1,4 +1,4 @@
-import type { Faz, Mahal, IsKalemi, Proje } from '../types';
+import type { Faz, Mahal, IsKalemi, Proje, IstekKalemi } from '../types';
 
 // ============================================================================
 // SEED VERİSİ — İlk açılışta panele yüklenir (onaylı projeden çıkarıldı)
@@ -159,4 +159,50 @@ export const IS_KALEMLERI: IsKalemi[] = [
   // Faz 15 — Teslim
   ik('ik-15-1', 'f15', 'Genel temizlik + eksik tamamlama (punch list)', 'gtr'),
   ik('ik-15-2', 'f15', 'İskan (yapı kullanma izni) süreci', 'gtr'),
+];
+
+// ============================================================================
+// İSTEK LİSTESİ — Opus'un tam (tahminsiz) çalışması için baştan istediği her şey
+// ============================================================================
+
+const ist = (id: string, kategori: string, baslik: string, aciklama: string, zorunlu = false): IstekKalemi =>
+  ({ id, kategori, baslik, aciklama, zorunlu, durum: 'bekliyor' });
+
+export const ISTEK_LISTESI: IstekKalemi[] = [
+  // Resmi Belgeler & Belediye
+  ist('ist-ruhsat', 'Resmi Belgeler & Belediye', 'Yapı Ruhsatı (tam fotokopi/PDF)', 'Ruhsat alındı (No 127) — belgenin tam taraması arşive yüklenmeli.', true),
+  ist('ist-mimari', 'Resmi Belgeler & Belediye', 'Onaylı Mimari Uygulama Projesi (tam set, PDF/DWG)', 'Fotoğrafları görüldü; tam ölçülü set olmadan kapı/pencere/kaplama metrajı kesinleşmez.', true),
+  ist('ist-tapu', 'Resmi Belgeler & Belediye', 'Tapu + İmar Durumu Belgesi', 'Mülkiyet ve imar şartlarının teyidi; resmi işlemler için.', false),
+  ist('ist-yd-sozlesme', 'Resmi Belgeler & Belediye', 'Yapı Denetim Sözleşmesi + İşe Başlama Bildirimi', 'Mimart ile sözleşme ve belediyeye işe başlama bildirimi (inşaata başlama şartı).', true),
+  ist('ist-aplikasyon', 'Resmi Belgeler & Belediye', 'Aplikasyon Krokisi / Kot-Röper Tutanağı', 'Binanın arsadaki yeri ve ±0.00 kotu; yanlışsa tüm bina kayar.', true),
+
+  // Projeler (Tam Metraj İçin)
+  ist('ist-statik', 'Projeler (Tam Metraj İçin)', 'Onaylı Statik (Betonarme) Proje', 'TAM çelik/demir tonajı (çap çap), beton m³ ve kalıp m² buradan çıkar. Tahmin yerine kesin metraj.', true),
+  ist('ist-elektrik', 'Projeler (Tam Metraj İçin)', 'Onaylı Elektrik Projesi', 'Kablo metrajı (kesit kesit kaç metre), pano, aydınlatma/priz sayısı buradan kesinleşir.', true),
+  ist('ist-mekanik', 'Projeler (Tam Metraj İçin)', 'Onaylı Mekanik / Tesisat Projesi', 'Temiz/pis su + ısıtma boru metrajı, radyatör/kolektör, doğalgaz hattı buradan çıkar.', true),
+  ist('ist-jeoloji', 'Projeler (Tam Metraj İçin)', 'Jeoloji / Geoteknik / Zemin Etüt Raporu', 'Yapıldı (5.04.2024) — dosya yüklenmeli; temel ve istinat duvarı kararları buna dayanır.', true),
+  ist('ist-metraj', 'Projeler (Tam Metraj İçin)', 'Varsa Hazır Metraj / Keşif Cetveli', 'Müellif/şantiye şefinde hazır metraj varsa, birim fiyatları doğrudan ona işleriz.', false),
+
+  // Saha & Keşif
+  ist('ist-saha-foto', 'Saha & Keşif', 'Güncel Saha Fotoğrafları (her yön + giriş)', 'Mevcut durum, şev, komşu yapı ve yol erişimi için. Düzenli güncellenmeli.', false),
+  ist('ist-kot', 'Saha & Keşif', 'Güncel Kot / Şev Ölçümleri', 'Hafriyat m³ ve istinat duvarı boyutları için gerçek arazi kotları.', false),
+  ist('ist-altyapi', 'Saha & Keşif', 'Altyapı Noktaları (su/elektrik/doğalgaz/kanal)', 'Geçici ve daimi abonelik bağlantı noktaları; yağmur suyu çözümü.', false),
+
+  // Malzeme Seçimleri (Kararın)
+  ist('ist-tas', 'Malzeme Seçimleri (Kararın)', 'Dış Cephe Taş Türü/Markası', 'Taş kaplama m² fiyatı ve görünüm bu seçime bağlı (lüks kalem).', false),
+  ist('ist-dograma', 'Malzeme Seçimleri (Kararın)', 'Alüminyum Doğrama Marka/Serisi + Cam', 'Doğrama m² fiyatı + uzun teslim süresi; erken karar şart.', false),
+  ist('ist-seramik', 'Malzeme Seçimleri (Kararın)', 'Seramik / Mermer / Parke Seçimleri', 'İnce iş maliyetini en çok etkileyen kalem; numune onayı.', false),
+  ist('ist-isitma', 'Malzeme Seçimleri (Kararın)', 'Isıtma Sistemi + Kazan/Kombi Tercihi', 'Yerden/radyatör kararı tesisat metrajını ve maliyeti belirler.', false),
+  ist('ist-asansor', 'Malzeme Seçimleri (Kararın)', 'Asansör Marka/Kapasite', 'Uzun teslimli; durak sayısına göre fiyat. Erken sipariş.', false),
+  ist('ist-mutfak', 'Malzeme Seçimleri (Kararın)', 'Mutfak/Banyo Marka ve Vitrifiye Tercihi', 'Bitiş maliyeti için; ölçü ince iş sonrası netleşir.', false),
+
+  // Ekip & Makine
+  ist('ist-santiye-sef', 'Ekip & Makine', 'Şantiye Şefi Sözleşmesi', 'Fatih Bozdemir (İnş.Müh.) — sözleşme arşive yüklenmeli.', true),
+  ist('ist-taseron-liste', 'Ekip & Makine', 'Taşeron Listesi (kim hangi iş)', 'Hangi işi kimin yapacağı; teklif ve hakediş yönetimi için.', false),
+  ist('ist-makine', 'Ekip & Makine', 'Makine İhtiyacı (ekskavatör/vinç/pompa) + kira süreleri', 'Makine masraflarını gerçek kira süresi/ücretiyle hesaplamak için.', false),
+  ist('ist-isci-plan', 'Ekip & Makine', 'İşçi Sayısı / Çalışma Planı', 'Günlük kişi sayısı ve işçilik maliyeti takibi için (Saha Kaydı ile).', false),
+
+  // Tedarikçi & Fiyat
+  ist('ist-tedarikci', 'Tedarikçi & Fiyat', 'Tercih Edilen Tedarikçi/Firma Listesi + İletişim', 'Aynı malzeme için 5+ firmadan fiyat almak; en uygunu seçmek.', false),
+  ist('ist-eposta', 'Tedarikçi & Fiyat', 'Fiyat Toplama İçin E-posta Kurulumu Onayı', 'Firmalara otomatik teklif maili + cevapları panele işleme (ayrı kurulum).', false),
 ];

@@ -12,6 +12,7 @@ import Rehber from './pages/Rehber';
 import AsistanAI from './pages/AsistanAI';
 import Raporlar from './pages/Raporlar';
 import SahaKaydi from './pages/SahaKaydi';
+import IstekListesi from './pages/IstekListesi';
 import Proje from './pages/Proje';
 
 export default function App() {
@@ -19,6 +20,7 @@ export default function App() {
     <Layout>
       <Routes>
         <Route path="/" element={<Ozet />} />
+        <Route path="/istek-listesi" element={<IstekListesi />} />
         <Route path="/rehber" element={<Rehber />} />
         <Route path="/asistan" element={<AsistanAI />} />
         <Route path="/raporlar" element={<Raporlar />} />

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Faz, Mahal, IsKalemi, Taseron, Teklif, Odeme, Belge, Proje, SahaGunluk, Sarfiyat } from '../types';
-import { PROJE, FAZLAR, MAHALLER, IS_KALEMLERI } from '../data/seed';
+import type { Faz, Mahal, IsKalemi, Taseron, Teklif, Odeme, Belge, Proje, SahaGunluk, Sarfiyat, IstekKalemi } from '../types';
+import { PROJE, FAZLAR, MAHALLER, IS_KALEMLERI, ISTEK_LISTESI } from '../data/seed';
 import { uid } from '../lib/format';
 
 // ============================================================================
@@ -21,6 +21,8 @@ interface State {
   belgeler: Belge[];
   sahaGunlukleri: SahaGunluk[];
   sarfiyatlar: Sarfiyat[];
+  istekListesi: IstekKalemi[];
+  istekBrifing: string;    // AI'nın "ihtiyacım olanlar" üst metni
   rehberBrifing: Record<string, string>; // rehber bölüm id -> AI brifing metni (önbellek)
 
   // İş kalemleri
@@ -60,6 +62,11 @@ interface State {
   // Rehber AI brifing önbelleği
   rehberBrifingKaydet: (id: string, metin: string) => void;
 
+  // İstek listesi (eksik belge/bilgi)
+  istekGuncelle: (id: string, patch: Partial<IstekKalemi>) => void;
+  istekEkle: (k: Omit<IstekKalemi, 'id'>) => string;
+  istekSil: (id: string) => void;
+  istekBrifingKaydet: (metin: string) => void;
   // Proje künyesi
   projeGuncelle: (patch: Partial<Proje>) => void;
   // Bakım
@@ -81,6 +88,8 @@ export const useStore = create<State>()(
       belgeler: [],
       sahaGunlukleri: [],
       sarfiyatlar: [],
+      istekListesi: ISTEK_LISTESI,
+      istekBrifing: '',
       rehberBrifing: {},
 
       isKalemiEkle: (k) => {
@@ -176,16 +185,28 @@ export const useStore = create<State>()(
       rehberBrifingKaydet: (id, metin) =>
         set((s) => ({ rehberBrifing: { ...s.rehberBrifing, [id]: metin } })),
 
+      istekGuncelle: (id, patch) =>
+        set((s) => ({ istekListesi: s.istekListesi.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
+      istekEkle: (k) => {
+        const id = uid('ist');
+        set((s) => ({ istekListesi: [...s.istekListesi, { ...k, id }] }));
+        return id;
+      },
+      istekSil: (id) =>
+        set((s) => ({ istekListesi: s.istekListesi.filter((x) => x.id !== id) })),
+      istekBrifingKaydet: (metin) => set({ istekBrifing: metin }),
+
       projeGuncelle: (patch) => set((s) => ({ proje: { ...s.proje, ...patch } })),
       sifirla: () =>
         set({
           proje: PROJE, fazlar: FAZLAR, mahaller: MAHALLER, isKalemleri: IS_KALEMLERI,
           taseronlar: [], teklifler: [], odemeler: [], belgeler: [], sahaGunlukleri: [], sarfiyatlar: [], rehberBrifing: {},
+          istekListesi: ISTEK_LISTESI, istekBrifing: '',
         }),
 
       disaAktar: () => {
-        const { proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler, sahaGunlukleri, sarfiyatlar } = get();
-        return JSON.stringify({ proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler, sahaGunlukleri, sarfiyatlar }, null, 2);
+        const { proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler, sahaGunlukleri, sarfiyatlar, istekListesi, istekBrifing, rehberBrifing } = get();
+        return JSON.stringify({ proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler, sahaGunlukleri, sarfiyatlar, istekListesi, istekBrifing, rehberBrifing }, null, 2);
       },
       iceAktar: (json) => {
         try {
@@ -201,6 +222,9 @@ export const useStore = create<State>()(
             belgeler: d.belgeler ?? [],
             sahaGunlukleri: d.sahaGunlukleri ?? [],
             sarfiyatlar: d.sarfiyatlar ?? [],
+            istekListesi: d.istekListesi ?? ISTEK_LISTESI,
+            istekBrifing: d.istekBrifing ?? '',
+            rehberBrifing: d.rehberBrifing ?? {},
           });
           return true;
         } catch {

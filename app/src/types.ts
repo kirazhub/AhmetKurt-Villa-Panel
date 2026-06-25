@@ -182,3 +182,30 @@ export interface Sarfiyat {
   isKalemiId?: string;
   notlar?: string;
 }
+
+// ============================================================================
+// İSTEK LİSTESİ — AI'nın tam performans için ihtiyaç duyduğu belge/bilgi/karar
+// "Tahmin yürütme, dosya gelince tam rakam çıkar" ilkesi.
+// ============================================================================
+
+export type IstekDurum = 'bekliyor' | 'saglandi' | 'gereksiz';
+
+export interface IstekKalemi {
+  id: string;
+  kategori: string;       // bkz. ISTEK_KATEGORILERI
+  baslik: string;
+  aciklama: string;       // neden gerekli + hangi TAM rakamı/kararı açar
+  zorunlu?: boolean;      // tam çalışma için şart mı
+  durum: IstekDurum;
+  belgeId?: string;       // Foto & Belge arşivindeki dosya
+  not?: string;
+}
+
+export const ISTEK_KATEGORILERI = [
+  'Resmi Belgeler & Belediye',
+  'Projeler (Tam Metraj İçin)',
+  'Saha & Keşif',
+  'Malzeme Seçimleri (Kararın)',
+  'Ekip & Makine',
+  'Tedarikçi & Fiyat',
+] as const;
