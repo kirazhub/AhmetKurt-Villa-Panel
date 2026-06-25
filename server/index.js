@@ -111,8 +111,10 @@ app.get('/api/ai/health', (_req, res) => {
 });
 
 // Görsel (vision) destekli çağrı — belge/plan/fotoğraf okuma
+// Belge OCR + düzgün Türkçe için güçlü vision modeli (env ile değiştirilebilir)
+const VISION_MODEL = (process.env.OPENROUTER_VISION_MODEL || 'google/gemini-2.5-pro').trim();
 async function claudeVision(systemMetin, metin, gorselUrl, maxTokens) {
-  const model = await modelSec();
+  const model = VISION_MODEL;
   const r = await fetch(`${API}/chat/completions`, {
     method: 'POST',
     headers: HEADERS(),
@@ -138,7 +140,13 @@ app.post('/api/ai/belge-spec', async (req, res) => {
   try {
     const { ad = '', gorsel = '' } = req.body || {};
     if (!gorsel || !/^(data:image|https?:\/\/)/.test(String(gorsel))) return res.status(400).json({ hata: 'Geçerli bir görsel (dataURL veya http URL) gerekli' });
-    const sys = `Sen kıdemli bir mimari/inşaat belge analiz uzmanısın. Sana verilen görsel; mimari kat planı, görünüş, kesit, ölçü kağıdı, vaziyet planı, teknik çizim, fatura veya şantiye fotoğrafı olabilir. Görseldeki TÜM teknik bilgiyi eksiksiz, dürüst ve düzenli çıkar. Sadece görselde GERÇEKTEN görünen/yazan bilgiyi yaz; tahmin/uydurma YAPMA. Okunamayan yeri "okunamadı" diye belirt. Tümü Türkçe.`;
+    const sys = `Sen kıdemli bir mimari/inşaat belge analiz uzmanısın. Sana verilen görsel; mimari kat planı, görünüş, kesit, ölçü kağıdı, vaziyet planı, teknik çizim, fatura veya şantiye fotoğrafı olabilir. Görseldeki TÜM teknik bilgiyi eksiksiz, dürüst ve düzenli çıkar. Sadece görselde GERÇEKTEN görünen/yazan bilgiyi yaz; tahmin/uydurma YAPMA. Okunamayan yeri "okunamadı" diye belirt.
+
+YAZIM KURALLARI (çok önemli):
+- Kusursuz, akıcı ve dilbilgisi açısından DOĞRU Türkçe yaz. Bozuk kelime, harf hatası, eksik/yarım cümle KESİNLİKLE olmasın.
+- Türkçe karakterleri (ç, ğ, ı, ö, ş, ü) doğru kullan.
+- Rakamları ve yazıları görselden DİKKATLE oku; emin olmadığın bir değeri "okunamadı" yaz, yanlış/uydurma değer YAZMA.
+- Net, kısa ve düzenli başlıklarla yaz. Tümü Türkçe.`;
     const istem = `Belge: "${ad}"
 
 Bu görseli incele ve içindeki tüm teknik detayları başlıklar altında madde madde yaz:
