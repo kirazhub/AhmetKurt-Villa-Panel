@@ -13,6 +13,15 @@ import Belgeler from './pages/Belgeler';
 import Specler from './pages/Specler';
 import MaliyetRaporu from './pages/MaliyetRaporu';
 import OtomatikSpec from './components/OtomatikSpec';
+
+// Güncel USD/TRY kurunu günde bir çeker, store'a yazar.
+function OtomatikKur() {
+  const kurGuncelle = useStore((s) => s.kurGuncelle);
+  useEffect(() => {
+    fetch('/api/kur').then((r) => r.json()).then((d) => { if (d && d.usd) kurGuncelle(d.usd, d.tarih || ''); }).catch(() => {});
+  }, [kurGuncelle]);
+  return null;
+}
 import Takvim from './pages/Takvim';
 import Rehber from './pages/Rehber';
 import AsistanAI from './pages/AsistanAI';
@@ -63,6 +72,7 @@ export default function App() {
     <Layout>
       <OtomatikYedek />
       <OtomatikSpec />
+      <OtomatikKur />
       <Routes>
         <Route path="/" element={<Ozet />} />
         <Route path="/istek-listesi" element={<IstekListesi />} />

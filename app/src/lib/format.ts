@@ -7,6 +7,11 @@ export function tl(n: number | undefined | null): string {
   }).format(n);
 }
 
+export function usd(n: number | undefined | null, kur?: number | null): string {
+  if (n === undefined || n === null || isNaN(n) || !kur) return '';
+  return '$' + new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(n / kur);
+}
+
 export function sayi(n: number | undefined | null, ondalik = 0): string {
   if (n === undefined || n === null || isNaN(n)) return '—';
   return new Intl.NumberFormat('tr-TR', {

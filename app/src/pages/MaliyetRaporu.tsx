@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Calculator, Loader2, Sparkles, AlertTriangle, RefreshCw, TrendingUp, Package, Info } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { PageHeader, Card, CardBody, Button, EmptyState, Badge } from '../components/ui';
-import { tl, tarih } from '../lib/format';
+import { tl, usd, tarih } from '../lib/format';
 import type { MaliyetVaryasyon, MaliyetKategori } from '../types';
 
 const SENARYO = [
@@ -15,11 +15,12 @@ function topla(kategoriler: MaliyetKategori[], key: 'ekonomik' | 'orta' | 'premi
   return kategoriler.reduce((acc, k) => acc + (k.altToplam?.[key] ?? k.kalemler.reduce((a, kl) => a + (kl[key]?.toplam ?? 0), 0)), 0);
 }
 
-function Hucre({ v }: { v?: MaliyetVaryasyon }) {
+function Hucre({ v, kur }: { v?: MaliyetVaryasyon; kur?: number | null }) {
   if (!v) return <td className="px-2 py-2 text-metin-yum text-xs">—</td>;
   return (
     <td className="px-2 py-2 align-top">
       <div className="font-semibold text-metin text-sm whitespace-nowrap">{tl(v.toplam)}</div>
+      {kur && v.toplam ? <div className="text-[11px] text-emerald-600 whitespace-nowrap">≈ {usd(v.toplam, kur)}</div> : null}
       <div className="text-[11px] text-metin-yum leading-tight">{[v.marka, v.urun].filter(Boolean).join(' · ')}{v.birim ? ` · ${tl(v.birim)}/br` : ''}</div>
     </td>
   );
@@ -31,6 +32,8 @@ export default function MaliyetRaporu() {
   const mahaller = useStore((s) => s.mahaller);
   const rapor = useStore((s) => s.maliyetRaporu);
   const kaydet = useStore((s) => s.maliyetRaporuKaydet);
+  const usdKur = useStore((s) => s.usdKur);
+  const usdKurTarih = useStore((s) => s.usdKurTarih);
 
   const [yukleniyor, setYukleniyor] = useState(false);
   const [hata, setHata] = useState('');
@@ -84,6 +87,7 @@ export default function MaliyetRaporu() {
                 <CardBody>
                   <p className={`text-xs font-medium ${s.yazi} flex items-center gap-1.5`}><TrendingUp size={13} /> {s.ad}</p>
                   <p className="text-2xl font-bold text-metin mt-1 leading-tight">{tl(rapor.senaryolar?.[s.key] ?? toplamlar[s.key])}</p>
+                  {usdKur && <p className="text-xs text-emerald-600 font-medium">≈ {usd(rapor.senaryolar?.[s.key] ?? toplamlar[s.key], usdKur)}</p>}
                   <p className="text-[11px] text-metin-yum mt-0.5">{s.aciklama}</p>
                 </CardBody>
               </Card>
@@ -93,7 +97,7 @@ export default function MaliyetRaporu() {
           {/* Özet */}
           {rapor.ozet && <Card><CardBody className="flex gap-3"><Sparkles size={16} className="text-marka-500 shrink-0 mt-0.5" /><p className="text-sm text-metin leading-relaxed">{rapor.ozet}</p></CardBody></Card>}
 
-          <p className="text-xs text-metin-yum flex items-center gap-1.5"><Info size={12} /> {tarih(rapor.tarih)} tarihli · {rapor.kaynakSayisi ?? 0} belge dikkate alındı · Fiyatlar TAHMİNİDİR, kesin teklif firmadan alınır.</p>
+          <p className="text-xs text-metin-yum flex items-center gap-1.5 flex-wrap"><Info size={12} /> {tarih(rapor.tarih)} tarihli · {rapor.kaynakSayisi ?? 0} belge dikkate alındı · Fiyatlar TAHMİNİDİR, kesin teklif firmadan alınır.{usdKur ? ` · 💵 1 $ = ₺${usdKur.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}${usdKurTarih ? ' (' + usdKurTarih + ')' : ''}` : ''}</p>
 
           {/* Kategoriler */}
           {kategoriler.map((kat, i) => (
@@ -126,9 +130,9 @@ export default function MaliyetRaporu() {
                             {k.not && <div className="text-[11px] text-metin-yum">{k.not}</div>}
                           </td>
                           <td className="px-2 py-2 align-top text-metin-yum whitespace-nowrap">{k.miktar || '—'}</td>
-                          <Hucre v={k.ekonomik} />
-                          <Hucre v={k.orta} />
-                          <Hucre v={k.premium} />
+                          <Hucre v={k.ekonomik} kur={usdKur} />
+                          <Hucre v={k.orta} kur={usdKur} />
+                          <Hucre v={k.premium} kur={usdKur} />
                         </tr>
                       ))}
                     </tbody>

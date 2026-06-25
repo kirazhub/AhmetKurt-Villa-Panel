@@ -394,6 +394,31 @@ app.post('/api/wa/kuyruk-durdur', (_req, res) => {
   res.json({ ok: true });
 });
 
+// --- Güncel USD/TRY kuru (günlük, 6 saat önbellekli, yedekli) ---
+let _kur = oku('kur.json', null); // { usd, tarih, kaynak, cekildiMs }
+async function kurCek() {
+  try {
+    const r = await fetch('https://open.er-api.com/v6/latest/USD');
+    const d = await r.json();
+    const t = d?.rates?.TRY;
+    if (t) return { usd: t, tarih: (d.time_last_update_utc || '').slice(0, 16) || new Date().toISOString(), kaynak: 'er-api' };
+  } catch { /* yedeğe geç */ }
+  try {
+    const r = await fetch('https://api.frankfurter.app/latest?from=USD&to=TRY');
+    const d = await r.json();
+    if (d?.rates?.TRY) return { usd: d.rates.TRY, tarih: d.date, kaynak: 'frankfurter' };
+  } catch { /* yok */ }
+  return null;
+}
+app.get('/api/kur', async (_req, res) => {
+  const taze = _kur && _kur.cekildiMs && (Date.now() - _kur.cekildiMs < 6 * 3600 * 1000);
+  if (taze) return res.json(_kur);
+  const k = await kurCek();
+  if (k) { _kur = { ...k, cekildiMs: Date.now() }; yaz('kur.json', _kur); return res.json(_kur); }
+  if (_kur) return res.json(_kur); // güncel alınamadıysa son bilinen
+  res.status(503).json({ hata: 'Kur alınamadı' });
+});
+
 // --- İstanbul odaklı danışma sistem promptu ---
 function danismaPromptu(baglam) {
   return `Sen "Ahmet Kurt Villa Projesi"nin kıdemli inşaat danışmanısın. Kullanıcı sana her konuda soru sorar; sen 3 kaynağı HARMANLAYARAK cevap yazarsın:
