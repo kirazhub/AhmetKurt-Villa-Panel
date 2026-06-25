@@ -9,11 +9,14 @@
     "dev": "node --watch index.js"
   },
   "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.9",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "imapflow": "^1.0.171",
     "mailparser": "^3.7.2",
-    "nodemailer": "^6.9.16"
+    "nodemailer": "^6.9.16",
+    "pino": "^9.5.0",
+    "qrcode": "^1.5.4"
   }
 }

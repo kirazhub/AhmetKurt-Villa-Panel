@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import nodemailer from 'nodemailer';
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
+import * as wa from './wa.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'fs';
@@ -142,6 +143,24 @@ app.post('/api/ai/analiz', async (req, res) => {
 // ============================================================================
 const VERI = join(__dirname, 'veri');
 if (!existsSync(VERI)) mkdirSync(VERI, { recursive: true });
+
+// WhatsApp Web'i başlat (QR ile bağlanır)
+wa.baslat(VERI);
+
+// --- WhatsApp uçları ---
+app.get('/api/wa/durum', (_req, res) => res.json(wa.durum()));
+app.get('/api/wa/gelenler', (_req, res) => res.json({ mesajlar: wa.gelenler() }));
+app.post('/api/wa/gonder', async (req, res) => {
+  try {
+    const { numara, mesaj } = req.body || {};
+    if (!numara || !mesaj) return res.status(400).json({ hata: 'numara ve mesaj gerekli' });
+    const jid = await wa.gonder(numara, mesaj);
+    res.json({ ok: true, jid });
+  } catch (e) {
+    res.status(503).json({ hata: 'Gönderilemedi', detay: String(e?.message || e) });
+  }
+});
+app.post('/api/wa/cikis', async (_req, res) => { await wa.cikis(); res.json({ ok: true }); });
 const oku = (dosya, varsayilan) => { try { return JSON.parse(readFileSync(join(VERI, dosya), 'utf8')); } catch { return varsayilan; } };
 const yaz = (dosya, veri) => { try { writeFileSync(join(VERI, dosya), JSON.stringify(veri, null, 2)); } catch (e) { console.error('yaz hata', e); } };
 

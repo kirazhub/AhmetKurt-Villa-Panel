@@ -281,4 +281,5 @@ export interface GonderenProfil {
   ad: string;
   unvan: string;
   telefon?: string;
+  whatsapp?: string;       // Kiraz'ın WhatsApp numarası (firmalar dönsün diye imzaya eklenir)
 }

@@ -20,6 +20,7 @@ import IstekListesi from './pages/IstekListesi';
 import Danisma from './pages/Danisma';
 import HeicDonustur from './pages/HeicDonustur';
 import TeklifToplama from './pages/TeklifToplama';
+import Whatsapp from './pages/Whatsapp';
 import Proje from './pages/Proje';
 
 // Tüm panel durumunu sunucuya otomatik yedekler (hiçbir bilgi kaybı olmasın).
@@ -73,6 +74,7 @@ export default function App() {
         <Route path="/odemeler" element={<Odemeler />} />
         <Route path="/teklifler" element={<Teklifler />} />
         <Route path="/teklif-toplama" element={<TeklifToplama />} />
+        <Route path="/whatsapp" element={<Whatsapp />} />
         <Route path="/belgeler" element={<Belgeler />} />
         <Route path="/heic" element={<HeicDonustur />} />
         <Route path="/takvim" element={<Takvim />} />
