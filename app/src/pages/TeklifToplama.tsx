@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Mailbox, Plus, Trash2, Sparkles, Loader2, Send, Paperclip, KeyRound, Building, CheckCircle2, UserCog, Search, Printer } from 'lucide-react';
+import { Mailbox, Plus, Trash2, Sparkles, Loader2, Send, Paperclip, KeyRound, Building, CheckCircle2, UserCog, Search, Printer, Inbox, ChevronDown, ChevronUp } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { PageHeader, Card, CardBody, Button, Badge, Field, Input, Select, Textarea, Modal, EmptyState, TableWrap } from '../components/ui';
 import { blobGetir } from '../lib/idb';
@@ -44,6 +44,21 @@ export default function TeklifToplama() {
   const [buluyor, setBuluyor] = useState(false);
   const [bulunan, setBulunan] = useState<BulunanFirma[]>([]);
   const [bulunanSecili, setBulunanSecili] = useState<Record<number, boolean>>({});
+
+  // Gelen kutusu
+  const [gelenler, setGelenler] = useState<{ from: string; subject: string; date: string; text: string; ozet: string }[]>([]);
+  const [gelenYukleniyor, setGelenYukleniyor] = useState(false);
+  const [acikMail, setAcikMail] = useState<Record<number, boolean>>({});
+
+  const gelenleriTara = async () => {
+    setGelenYukleniyor(true);
+    try {
+      const r = await fetch('/api/mail/gelenler?limit=8');
+      const d = await r.json();
+      setGelenler(Array.isArray(d.emails) ? d.emails : []);
+    } catch { /* yoksay */ }
+    setGelenYukleniyor(false);
+  };
 
   useEffect(() => {
     fetch('/api/mail/health').then((r) => r.json()).then((d) => { setMailHazir(!!d.yapilandirilmis); setMailAdres(d.adres || ''); }).catch(() => setMailHazir(false));
@@ -232,6 +247,45 @@ Resmi ama sıcak, Türkçe. SADECE e-posta gövdesini yaz (konu satırı hariç)
           </div>
         </CardBody></Card>
       </div>
+
+      {/* Gelen Teklifler (AI özetli) */}
+      <Card className="mt-6"><CardBody>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <p className="font-semibold text-metin flex items-center gap-2"><Inbox size={16} /> Gelen Teklifler <span className="text-xs font-normal text-metin-yum">(AI özetli)</span></p>
+          <Button variant="soft" size="sm" onClick={gelenleriTara} disabled={gelenYukleniyor || !mailHazir}>{gelenYukleniyor ? <Loader2 size={15} className="animate-spin" /> : <Inbox size={15} />} Gelen kutusunu tara</Button>
+        </div>
+        {!mailHazir ? (
+          <p className="text-sm text-metin-yum">Mail hesabı bağlanınca gelen kutusu taranabilir.</p>
+        ) : gelenYukleniyor ? (
+          <p className="text-sm text-metin-yum flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Mailler okunuyor ve AI özetliyor (biraz sürebilir)…</p>
+        ) : gelenler.length === 0 ? (
+          <p className="text-sm text-metin-yum">Henüz taranmadı ya da gelen mail yok. "Gelen kutusunu tara"ya bas.</p>
+        ) : (
+          <div className="space-y-3">
+            {gelenler.map((m, i) => {
+              const acik = !!acikMail[i];
+              return (
+                <div key={i} className="rounded-xl border border-cizgi p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium text-metin text-sm truncate">{m.subject}</p>
+                      <p className="text-xs text-metin-yum truncate">{m.from} · {tarih(m.date)}</p>
+                    </div>
+                    <button onClick={() => setAcikMail((s) => ({ ...s, [i]: !acik }))} className="text-marka-500 shrink-0 p-1 cursor-pointer">{acik ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</button>
+                  </div>
+                  {m.ozet && (
+                    <div className="mt-2 rounded-lg bg-marka-50 border border-marka-100 p-2.5">
+                      <p className="text-xs font-semibold text-marka-700 mb-1 flex items-center gap-1"><Sparkles size={12} /> AI Özeti</p>
+                      <div className="text-sm text-marka-900 whitespace-pre-wrap">{m.ozet}</div>
+                    </div>
+                  )}
+                  {acik && <div className="mt-2 text-sm text-metin whitespace-pre-wrap border-t border-cizgi pt-2 max-h-64 overflow-y-auto">{m.text || '(metin yok)'}</div>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardBody></Card>
 
       {rfqKayitlari.length > 0 && (
         <Card className="mt-6"><CardBody>

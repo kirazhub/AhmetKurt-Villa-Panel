@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import nodemailer from 'nodemailer';
+import { ImapFlow } from 'imapflow';
+import { simpleParser } from 'mailparser';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'fs';
@@ -288,6 +290,47 @@ app.post('/api/mail/gonder', async (req, res) => {
     res.json({ ok: true, gonderilen: alicilar.length, id: info.messageId });
   } catch (e) {
     res.status(500).json({ hata: 'Gönderilemedi', detay: String(e?.message || e) });
+  }
+});
+
+// --- Gelen kutusu (IMAP) + her maile AI özeti ---
+const MAIL_IMAP = process.env.MAIL_IMAP_HOST || 'imap.hostinger.com';
+app.get('/api/mail/gelenler', async (req, res) => {
+  if (!mailHazir()) return res.status(503).json({ hata: 'Mail hesabı tanımlı değil.' });
+  const limit = Math.min(Number(req.query.limit || 8), 20);
+  try {
+    const client = new ImapFlow({ host: MAIL_IMAP, port: 993, secure: true, auth: { user: MAIL_USER, pass: MAIL_PASS }, logger: false });
+    await client.connect();
+    const emails = [];
+    const lock = await client.getMailboxLock('INBOX');
+    try {
+      const total = client.mailbox.exists || 0;
+      if (total > 0) {
+        const start = Math.max(1, total - limit + 1);
+        for await (const msg of client.fetch(`${start}:*`, { source: true })) {
+          try {
+            const p = await simpleParser(msg.source);
+            emails.push({ from: p.from?.text || '', subject: p.subject || '(konu yok)', date: (p.date || new Date()).toISOString(), text: (p.text || '').slice(0, 4000), ozet: '' });
+          } catch { /* atla */ }
+        }
+      }
+    } finally { lock.release(); await client.logout(); }
+    emails.reverse(); // en yeni üstte
+    // Her mail için kısa AI özeti
+    for (const e of emails) {
+      if (!e.text.trim()) continue;
+      try {
+        const { metin } = await claude(
+          'Sen inşaat teklif maillerini çok kısa özetleyen bir asistansın. Sadece özet yaz, giriş cümlesi kurma.',
+          [{ role: 'user', icerik: `Aşağıdaki firma mailini Türkçe ve ÇOK KISA (2-4 madde) özetle: FİYAT, SÜRE, KAÇ KİŞİ, KAÇ MAKİNE, MALZEME/KAPSAM. Bilgi yoksa "belirtilmemiş" yaz. Sadece özet:\n\n${e.text}` }],
+          300,
+        );
+        e.ozet = metin;
+      } catch { e.ozet = ''; }
+    }
+    res.json({ emails });
+  } catch (e) {
+    res.status(500).json({ hata: 'Gelen kutusu okunamadı', detay: String(e?.message || e) });
   }
 });
 
