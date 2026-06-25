@@ -120,7 +120,7 @@ export const useStore = create<State>()(
       danismalar: [],
       firmalar: [],
       rfqKayitlari: [],
-      gonderenProfil: { ad: 'Kiraz Kurt', unvan: 'Satın Alma ve Koordinasyon Müdürü', telefon: '' },
+      gonderenProfil: { ad: 'Raif Kurt', unvan: 'Proje Yetkilisi', telefon: '0532 309 13 83' },
       rehberBrifing: {},
       maliyetRaporu: null,
       usdKur: null,
@@ -266,7 +266,7 @@ export const useStore = create<State>()(
           proje: PROJE, fazlar: FAZLAR, mahaller: MAHALLER, isKalemleri: IS_KALEMLERI,
           taseronlar: [], teklifler: [], odemeler: [], belgeler: [], sahaGunlukleri: [], sarfiyatlar: [], rehberBrifing: {}, maliyetRaporu: null, usdKur: null, usdKurTarih: '',
           istekListesi: ISTEK_LISTESI, istekBrifing: '', dersler: [], firmalar: [], rfqKayitlari: [],
-          gonderenProfil: { ad: 'Kiraz Kurt', unvan: 'Satın Alma ve Koordinasyon Müdürü', telefon: '' },
+          gonderenProfil: { ad: 'Raif Kurt', unvan: 'Proje Yetkilisi', telefon: '0532 309 13 83' },
         }),
 
       disaAktar: () => {
@@ -296,7 +296,7 @@ export const useStore = create<State>()(
             dersler: d.dersler ?? [],
             firmalar: d.firmalar ?? [],
             rfqKayitlari: d.rfqKayitlari ?? [],
-            gonderenProfil: d.gonderenProfil ?? { ad: 'Kiraz Kurt', unvan: 'Satın Alma ve Koordinasyon Müdürü', telefon: '' },
+            gonderenProfil: d.gonderenProfil ?? { ad: 'Raif Kurt', unvan: 'Proje Yetkilisi', telefon: '0532 309 13 83' },
           });
           return true;
         } catch {

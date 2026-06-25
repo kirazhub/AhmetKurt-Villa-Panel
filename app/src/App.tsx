@@ -65,6 +65,14 @@ export default function App() {
       .catch(() => setAuthed(true)); // sunucuya ulaşılamazsa yerel kullanıma izin ver
   }, []);
 
+  // Eski varsayılan imza (Kiraz Kurt) kayıtlıysa Raif Kurt'a güncelle (tek seferlik)
+  useEffect(() => {
+    const st = useStore.getState();
+    if (st.gonderenProfil?.ad === 'Kiraz Kurt') {
+      st.gonderenProfilGuncelle({ ad: 'Raif Kurt', unvan: 'Proje Yetkilisi', telefon: '0532 309 13 83' });
+    }
+  }, []);
+
   if (authed === null) return <div className="min-h-screen bg-slate-900" />;
   if (!authed) return <Giris onOk={() => setAuthed(true)} />;
 
