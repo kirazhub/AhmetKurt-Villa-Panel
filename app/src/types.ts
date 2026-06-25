@@ -246,3 +246,30 @@ export interface Danisma {
   kaynaklar?: DanismaKaynak[];
   model?: string;
 }
+
+// ============================================================================
+// TEKLİF TOPLAMA — Firma listesi + gönderilen teklif istekleri (RFQ)
+// ============================================================================
+
+export interface Firma {
+  id: string;
+  ad: string;
+  email: string;
+  kategori?: string;       // hafriyat, demir-beton, doğrama, mermer...
+  telefon?: string;
+  sehir?: string;
+  not?: string;
+  kaynak: 'kullanici' | 'ai';
+}
+
+export interface RfqKayit {
+  id: string;
+  tarih: string;           // ISO
+  konu: string;
+  govde: string;
+  kategori?: string;
+  alicilar: string[];      // gönderilen e-postalar
+  ekSayisi?: number;
+  durum: 'gonderildi' | 'hata';
+  hata?: string;
+}

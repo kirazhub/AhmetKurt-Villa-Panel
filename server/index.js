@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import nodemailer from 'nodemailer';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'fs';
@@ -211,7 +212,7 @@ app.delete('/api/danisma/:id', (req, res) => {
 app.post('/api/yedek', (req, res) => { yaz('durum.json', { tarih: new Date().toISOString(), durum: req.body?.durum ?? req.body }); res.json({ ok: true, tarih: new Date().toISOString() }); });
 app.get('/api/yedek', (_req, res) => res.json(oku('durum.json', null)));
 
-// --- HEIC -> JPG dönüştürme (sunucuda libheif/ImageMagick ile, güvenilir) ---
+// --- HEIC -> JPG dönüştürme (sunucuda pillow-heif/libheif ile, güvenilir) ---
 app.post('/api/heic-jpg', express.raw({ type: '*/*', limit: '80mb' }), (req, res) => {
   if (!req.body || !req.body.length) return res.status(400).json({ hata: 'Dosya gelmedi' });
   const taban = join(tmpdir(), `heic-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
@@ -233,6 +234,44 @@ app.post('/api/heic-jpg', express.raw({ type: '*/*', limit: '80mb' }), (req, res
       gonder();
     });
   });
+});
+
+// ============================================================================
+// MAIL — Teklif isteme (RFQ) gönderimi (nodemailer / Hostinger SMTP)
+// ============================================================================
+const MAIL_USER = process.env.MAIL_USER;
+const MAIL_PASS = process.env.MAIL_PASS;
+const MAIL_HOST = process.env.MAIL_HOST || 'smtp.hostinger.com';
+const MAIL_PORT = Number(process.env.MAIL_PORT || 465);
+const mailHazir = () => Boolean(MAIL_USER && MAIL_PASS);
+
+function transport() {
+  return nodemailer.createTransport({
+    host: MAIL_HOST, port: MAIL_PORT, secure: MAIL_PORT === 465,
+    auth: { user: MAIL_USER, pass: MAIL_PASS },
+  });
+}
+
+app.get('/api/mail/health', (_req, res) => res.json({ yapilandirilmis: mailHazir(), adres: mailHazir() ? MAIL_USER : null }));
+
+app.post('/api/mail/gonder', async (req, res) => {
+  if (!mailHazir()) return res.status(503).json({ hata: 'Mail hesabı tanımlı değil (.env: MAIL_USER/MAIL_PASS).' });
+  try {
+    const { alicilar = [], konu = '', govde = '', ekler = [] } = req.body || {};
+    if (!Array.isArray(alicilar) || alicilar.length === 0) return res.status(400).json({ hata: 'Alıcı yok.' });
+    const attachments = (ekler || []).map((e) => ({ filename: e.ad, content: Buffer.from(String(e.base64 || ''), 'base64') }));
+    const info = await transport().sendMail({
+      from: `Ahmet Kurt Villa Projesi <${MAIL_USER}>`,
+      to: MAIL_USER,                 // kendine
+      bcc: alicilar,                 // firmalar birbirini görmesin
+      subject: konu || 'Teklif Talebi',
+      text: govde,
+      attachments,
+    });
+    res.json({ ok: true, gonderilen: alicilar.length, id: info.messageId });
+  } catch (e) {
+    res.status(500).json({ hata: 'Gönderilemedi', detay: String(e?.message || e) });
+  }
 });
 
 // Üretimde derlenmiş paneli de servis et (varsa)

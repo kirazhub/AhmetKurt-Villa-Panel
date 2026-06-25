@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Faz, Mahal, IsKalemi, Taseron, Teklif, Odeme, Belge, Proje, SahaGunluk, Sarfiyat, IstekKalemi, Ders, Danisma } from '../types';
+import type { Faz, Mahal, IsKalemi, Taseron, Teklif, Odeme, Belge, Proje, SahaGunluk, Sarfiyat, IstekKalemi, Ders, Danisma, Firma, RfqKayit } from '../types';
 import { PROJE, FAZLAR, MAHALLER, IS_KALEMLERI, ISTEK_LISTESI } from '../data/seed';
 import { uid } from '../lib/format';
 
@@ -25,6 +25,8 @@ interface State {
   istekBrifing: string;    // AI'nın "ihtiyacım olanlar" üst metni
   dersler: Ders[];         // öğrenme hafızası (hata/doğru iş/genel)
   danismalar: Danisma[];   // danışma geçmişi (yerel önbellek; sunucuda da kalıcı)
+  firmalar: Firma[];       // teklif toplama firma listesi
+  rfqKayitlari: RfqKayit[];// gönderilen teklif istekleri
   rehberBrifing: Record<string, string>; // rehber bölüm id -> AI brifing metni (önbellek)
 
   // İş kalemleri
@@ -76,6 +78,12 @@ interface State {
 
   // Danışma önbelleği
   danismaSet: (liste: Danisma[]) => void;
+
+  // Teklif toplama (firmalar + RFQ)
+  firmaEkle: (f: Omit<Firma, 'id'>) => string;
+  firmaGuncelle: (id: string, patch: Partial<Firma>) => void;
+  firmaSil: (id: string) => void;
+  rfqEkle: (r: Omit<RfqKayit, 'id'>) => string;
   // Proje künyesi
   projeGuncelle: (patch: Partial<Proje>) => void;
   // Bakım
@@ -101,6 +109,8 @@ export const useStore = create<State>()(
       istekBrifing: '',
       dersler: [],
       danismalar: [],
+      firmalar: [],
+      rfqKayitlari: [],
       rehberBrifing: {},
 
       isKalemiEkle: (k) => {
@@ -217,17 +227,32 @@ export const useStore = create<State>()(
 
       danismaSet: (liste) => set({ danismalar: liste }),
 
+      firmaEkle: (f) => {
+        const id = uid('fm');
+        set((s) => ({ firmalar: [...s.firmalar, { ...f, id }] }));
+        return id;
+      },
+      firmaGuncelle: (id, patch) =>
+        set((s) => ({ firmalar: s.firmalar.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
+      firmaSil: (id) =>
+        set((s) => ({ firmalar: s.firmalar.filter((x) => x.id !== id) })),
+      rfqEkle: (r) => {
+        const id = uid('rfq');
+        set((s) => ({ rfqKayitlari: [...s.rfqKayitlari, { ...r, id }] }));
+        return id;
+      },
+
       projeGuncelle: (patch) => set((s) => ({ proje: { ...s.proje, ...patch } })),
       sifirla: () =>
         set({
           proje: PROJE, fazlar: FAZLAR, mahaller: MAHALLER, isKalemleri: IS_KALEMLERI,
           taseronlar: [], teklifler: [], odemeler: [], belgeler: [], sahaGunlukleri: [], sarfiyatlar: [], rehberBrifing: {},
-          istekListesi: ISTEK_LISTESI, istekBrifing: '', dersler: [],
+          istekListesi: ISTEK_LISTESI, istekBrifing: '', dersler: [], firmalar: [], rfqKayitlari: [],
         }),
 
       disaAktar: () => {
-        const { proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler, sahaGunlukleri, sarfiyatlar, istekListesi, istekBrifing, rehberBrifing, dersler } = get();
-        return JSON.stringify({ proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler, sahaGunlukleri, sarfiyatlar, istekListesi, istekBrifing, rehberBrifing, dersler }, null, 2);
+        const { proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler, sahaGunlukleri, sarfiyatlar, istekListesi, istekBrifing, rehberBrifing, dersler, firmalar, rfqKayitlari } = get();
+        return JSON.stringify({ proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler, sahaGunlukleri, sarfiyatlar, istekListesi, istekBrifing, rehberBrifing, dersler, firmalar, rfqKayitlari }, null, 2);
       },
       iceAktar: (json) => {
         try {
@@ -247,6 +272,8 @@ export const useStore = create<State>()(
             istekBrifing: d.istekBrifing ?? '',
             rehberBrifing: d.rehberBrifing ?? {},
             dersler: d.dersler ?? [],
+            firmalar: d.firmalar ?? [],
+            rfqKayitlari: d.rfqKayitlari ?? [],
           });
           return true;
         } catch {
