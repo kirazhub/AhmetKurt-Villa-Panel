@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ImageDown, Upload, Download, Loader2, CheckCircle2, XCircle, Archive } from 'lucide-react';
+import { ImageDown, Upload, Download, Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { PageHeader, Card, CardBody, Button, EmptyState } from '../components/ui';
 import { blobKaydet } from '../lib/idb';
@@ -29,7 +29,15 @@ export default function HeicDonustur() {
         if (!resp.ok) throw new Error('cevrim hatasi');
         const blob = await resp.blob();
         const url = URL.createObjectURL(blob);
-        setOgeler((o) => o.map((x) => (x.id === id ? { ...x, durum: 'bitti', url, blob } : x)));
+        // Otomatik olarak Foto & Belge arşivine ekle
+        let arsivlendi = false;
+        try {
+          const blobId = uid('blob');
+          await blobKaydet(blobId, blob);
+          belgeEkle({ ad: jpgAd, tur: 'foto', blobId, tarih: bugun() });
+          arsivlendi = true;
+        } catch { /* arşive eklenemezse yine de indirilebilir */ }
+        setOgeler((o) => o.map((x) => (x.id === id ? { ...x, durum: 'bitti', url, blob, arsivlendi } : x)));
       } catch {
         setOgeler((o) => o.map((x) => (x.id === id ? { ...x, durum: 'hata' } : x)));
       }
@@ -44,21 +52,13 @@ export default function HeicDonustur() {
 
   const hepsiniIndir = () => ogeler.filter((o) => o.durum === 'bitti').forEach((o, i) => setTimeout(() => indir(o), i * 350));
 
-  const arsiveEkle = async (o: Oge) => {
-    if (!o.blob) return;
-    const blobId = uid('blob');
-    await blobKaydet(blobId, o.blob);
-    belgeEkle({ ad: o.ad, tur: 'foto', blobId, tarih: bugun() });
-    setOgeler((arr) => arr.map((x) => (x.id === o.id ? { ...x, arsivlendi: true } : x)));
-  };
-
   const biten = ogeler.filter((o) => o.durum === 'bitti').length;
 
   return (
     <>
       <PageHeader
         baslik="HEIC → JPG Dönüştürücü"
-        aciklama="iPhone fotoğraflarını (HEIC) JPG'ye çevir; indir veya arşive ekle"
+        aciklama="iPhone fotoğraflarını (HEIC) JPG'ye çevir — otomatik Foto & Belge arşivine eklenir"
         sag={biten > 1 ? <Button variant="soft" size="sm" onClick={hepsiniIndir}><Download size={15} /> Hepsini indir ({biten})</Button> : undefined}
       />
 
@@ -91,11 +91,11 @@ export default function HeicDonustur() {
                 {o.durum === 'cevriliyor' && <p className="text-xs text-metin-yum mt-1">Çevriliyor…</p>}
                 {o.durum === 'hata' && <p className="text-xs text-red-600 mt-1">Çevrilemedi</p>}
                 {o.durum === 'bitti' && (
-                  <div className="flex gap-1.5 mt-2">
-                    <Button size="sm" className="flex-1 !px-2" onClick={() => indir(o)}><Download size={13} /> İndir</Button>
-                    <Button size="sm" variant={o.arsivlendi ? 'ghost' : 'soft'} className="!px-2" onClick={() => arsiveEkle(o)} disabled={o.arsivlendi}>
-                      {o.arsivlendi ? <CheckCircle2 size={14} className="text-emerald-600" /> : <Archive size={14} />}
-                    </Button>
+                  <div className="mt-2 space-y-1.5">
+                    <Button size="sm" className="w-full !px-2" onClick={() => indir(o)}><Download size={13} /> İndir</Button>
+                    {o.arsivlendi
+                      ? <p className="text-xs text-emerald-600 flex items-center gap-1"><CheckCircle2 size={12} /> Arşive eklendi</p>
+                      : <p className="text-xs text-metin-yum">Arşive eklenemedi</p>}
                   </div>
                 )}
               </CardBody>
