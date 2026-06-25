@@ -258,7 +258,7 @@ app.post('/api/firma-bul', async (req, res) => {
 app.post('/api/teklif-otomatik', async (req, res) => {
   if (!yapilandirilmis()) return res.status(503).json({ hata: 'OpenRouter anahtarı yok' });
   try {
-    const { kategori = 'Hafriyat / Kazı', bolge = 'İstanbul Avrupa Yakası / Arnavutköy', sorular = '', imza = '', ekler = [], projeNot = '' } = req.body || {};
+    const { kategori = 'Hafriyat / Kazı', bolge = 'İstanbul Avrupa Yakası / Arnavutköy', sorular = '', imza = '', ekler = [], projeNot = '', autoMail = true } = req.body || {};
 
     // 1) Firmaları web'de bul (JSON)
     const bulSys = 'Sen tedarikçi/firma araştırma asistanısın. Web aramasıyla GERÇEK firmalar bulursun. Yanıtın SADECE geçerli JSON dizisi olmalı, başka metin yok.';
@@ -291,7 +291,7 @@ app.post('/api/teklif-otomatik', async (req, res) => {
 
     // 3) E-postası olanlara gönder
     let gonderilen = 0;
-    if (mailHazir() && emailli.length > 0) {
+    if (autoMail && mailHazir() && emailli.length > 0) {
       const attachments = (ekler || []).map((e) => ({ filename: e.ad, content: Buffer.from(String(e.base64 || ''), 'base64') }));
       await transport().sendMail({ from: `Ahmet Kurt Villa Projesi <${MAIL_USER}>`, to: MAIL_USER, bcc: emailli.map((f) => f.email), subject: konu, text: govde, attachments });
       gonderilen = emailli.length;
