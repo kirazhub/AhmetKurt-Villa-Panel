@@ -137,7 +137,7 @@ app.post('/api/ai/belge-spec', async (req, res) => {
   if (!yapilandirilmis()) return res.status(503).json({ hata: 'OpenRouter API anahtarı tanımlı değil (.env).' });
   try {
     const { ad = '', gorsel = '' } = req.body || {};
-    if (!gorsel || !String(gorsel).startsWith('data:image')) return res.status(400).json({ hata: 'Geçerli bir görsel (dataURL) gerekli' });
+    if (!gorsel || !/^(data:image|https?:\/\/)/.test(String(gorsel))) return res.status(400).json({ hata: 'Geçerli bir görsel (dataURL veya http URL) gerekli' });
     const sys = `Sen kıdemli bir mimari/inşaat belge analiz uzmanısın. Sana verilen görsel; mimari kat planı, görünüş, kesit, ölçü kağıdı, vaziyet planı, teknik çizim, fatura veya şantiye fotoğrafı olabilir. Görseldeki TÜM teknik bilgiyi eksiksiz, dürüst ve düzenli çıkar. Sadece görselde GERÇEKTEN görünen/yazan bilgiyi yaz; tahmin/uydurma YAPMA. Okunamayan yeri "okunamadı" diye belirt. Tümü Türkçe.`;
     const istem = `Belge: "${ad}"
 

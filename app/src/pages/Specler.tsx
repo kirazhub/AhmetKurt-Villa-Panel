@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Ruler, Loader2, RefreshCw, CheckCircle2, AlertTriangle, Play, StopCircle, FileSearch, ChevronDown, ChevronUp } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Ruler, Loader2, RefreshCw, CheckCircle2, AlertTriangle, FileSearch, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { PageHeader, Card, CardBody, Button, EmptyState, Badge } from '../components/ui';
 import { blobGetir } from '../lib/idb';
@@ -10,22 +10,19 @@ import type { Belge } from '../types';
 export default function Specler() {
   const belgeler = useStore((s) => s.belgeler);
   const belgeGuncelle = useStore((s) => s.belgeGuncelle);
-  const fotolar = belgeler.filter((b) => b.tur === 'foto' && (b.blobId || b.url));
+  // Sözleşme hariç, görsel olabilecek tüm belgeler
+  const liste = belgeler.filter((b) => (b.blobId || b.url) && b.tur !== 'sozlesme');
 
   const [isleniyor, setIsleniyor] = useState<string | null>(null);
-  const [hata, setHata] = useState<Record<string, string>>({});
-  const [calisiyor, setCalisiyor] = useState(false);
   const [acik, setAcik] = useState<Record<string, boolean>>({});
   const [kapaklar, setKapaklar] = useState<Record<string, string>>({});
-  const durdurRef = useRef(false);
-  const baslatildi = useRef(false);
 
   // Küçük önizleme görselleri
   useEffect(() => {
     let iptal = false;
     (async () => {
       const yeni: Record<string, string> = {};
-      for (const b of fotolar) {
+      for (const b of liste) {
         if (kapaklar[b.id]) continue;
         if (b.url) { yeni[b.id] = b.url; continue; }
         if (b.blobId) { try { const bl = await blobGetir(b.blobId); if (bl) yeni[b.id] = URL.createObjectURL(bl); } catch { /**/ } }
@@ -36,62 +33,46 @@ export default function Specler() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [belgeler.length]);
 
-  const cikar = async (b: Belge): Promise<boolean> => {
-    setIsleniyor(b.id); setHata((h) => { const n = { ...h }; delete n[b.id]; return n; });
+  // Tek belge için elle (yeniden) çıkar
+  const cikar = async (b: Belge) => {
+    setIsleniyor(b.id);
     try {
-      let dataUrl = '';
-      if (b.blobId) { const bl = await blobGetir(b.blobId); if (!bl) throw new Error('Dosya bulunamadı'); dataUrl = await blobToDataUrl(bl); }
-      else if (b.url) { dataUrl = b.url; }
-      const r = await fetch('/api/ai/belge-spec', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ad: b.ad, gorsel: dataUrl }) });
+      let gorsel = '';
+      if (b.blobId) { const bl = await blobGetir(b.blobId); if (!bl) throw new Error('Dosya bulunamadı'); gorsel = await blobToDataUrl(bl); }
+      else if (b.url) gorsel = b.url;
+      const r = await fetch('/api/ai/belge-spec', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ad: b.ad, gorsel }) });
       const d = await r.json();
-      if (r.ok && d.spec) { belgeGuncelle(b.id, { spec: d.spec, specTarih: new Date().toISOString() }); return true; }
-      throw new Error(d.hata || 'AI yanıtı boş');
-    } catch (e) {
-      setHata((h) => ({ ...h, [b.id]: String((e as Error)?.message || e) }));
-      return false;
-    } finally { setIsleniyor(null); }
+      if (r.ok && d.spec) belgeGuncelle(b.id, { spec: d.spec, specTarih: new Date().toISOString(), specDurum: 'islendi' });
+      else belgeGuncelle(b.id, { specDurum: 'hata' });
+    } catch { belgeGuncelle(b.id, { specDurum: 'hata' }); }
+    finally { setIsleniyor(null); }
   };
 
-  const hepsiniCikar = async (sadeceEksik = true) => {
-    durdurRef.current = false; setCalisiyor(true);
-    const hedef = sadeceEksik ? fotolar.filter((b) => !b.spec) : fotolar;
-    for (const b of hedef) { if (durdurRef.current) break; await cikar(b); }
-    setCalisiyor(false);
-  };
+  const bekleyen = liste.filter((b) => !b.spec && b.specDurum !== 'hata' && b.specDurum !== 'atlandi').length;
+  const islenen = liste.filter((b) => b.spec).length;
 
-  // Sayfa açılınca eksik olanları otomatik çıkar (bir kez)
-  useEffect(() => {
-    if (baslatildi.current) return;
-    baslatildi.current = true;
-    if (fotolar.some((b) => !b.spec)) hepsiniCikar(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const eksik = fotolar.filter((b) => !b.spec).length;
-
-  if (fotolar.length === 0) {
+  if (liste.length === 0) {
     return (
       <>
-        <PageHeader baslik="Teknik Specler" aciklama="Yüklediğin plan ve belgelerden AI'nın çıkardığı tüm teknik bilgiler" />
-        <Card><EmptyState ikon={<Ruler size={28} />} baslik="Henüz fotoğraf/belge yok" aciklama="Foto & Belge sayfasından mimari plan, ölçü kağıdı veya çizim fotoğrafı yükle; AI buradan tüm ölçüleri, m²'leri ve teknik detayları çıkarsın." /></Card>
+        <PageHeader baslik="Teknik Specler" aciklama="Yüklediğin plan/belgelerden AI'nın çıkardığı tüm teknik bilgiler" />
+        <Card><EmptyState ikon={<Ruler size={28} />} baslik="Henüz görsel belge yok" aciklama="Foto & Belge'den mimari plan, ölçü kağıdı, liste veya çizim fotoğrafı yükle. Sisteme giren her görsel otomatik okunup buraya teknik bilgi olarak kaydedilir." /></Card>
       </>
     );
   }
 
   return (
     <>
-      <PageHeader
-        baslik="Teknik Specler"
-        aciklama="Yüklediğin plan/belgelerden AI'nın okuduğu ölçüler, m²'ler, kotlar ve teknik notlar"
-        sag={calisiyor
-          ? <Button variant="ghost" size="sm" onClick={() => { durdurRef.current = true; }} className="text-rose-600"><StopCircle size={15} /> Durdur</Button>
-          : <Button size="sm" onClick={() => hepsiniCikar(true)} disabled={eksik === 0}><Play size={15} /> Eksikleri çıkar ({eksik})</Button>}
-      />
+      <PageHeader baslik="Teknik Specler" aciklama="Sisteme yüklenen her görselin ölçüleri, m²'leri, kotları ve teknik notları — otomatik çıkarılır" />
 
-      {calisiyor && <p className="mb-4 text-sm text-metin-yum flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> AI belgeleri tek tek okuyor… ({fotolar.filter((b) => b.spec).length}/{fotolar.length})</p>}
+      <div className="mb-4 text-sm flex items-center gap-2 text-metin-yum">
+        <Sparkles size={15} className="text-marka-500" />
+        {bekleyen > 0
+          ? <span className="flex items-center gap-1.5"><Loader2 size={13} className="animate-spin" /> AI yeni belgeleri otomatik okuyor… ({islenen}/{liste.length} hazır)</span>
+          : <span>Tüm görseller işlendi · {islenen}/{liste.length}. Yeni yüklediğin her görsel otomatik buraya eklenir.</span>}
+      </div>
 
       <div className="space-y-4">
-        {fotolar.map((b) => {
+        {liste.map((b) => {
           const bu = isleniyor === b.id;
           const gizli = acik[b.id] === false;
           return (
@@ -104,15 +85,16 @@ export default function Specler() {
                       <div className="min-w-0">
                         <p className="font-semibold text-metin truncate flex items-center gap-2"><FileSearch size={15} className="text-marka-500 shrink-0" /> {b.ad}</p>
                         <p className="text-xs text-metin-yum mt-0.5">
-                          {b.spec ? <span className="inline-flex items-center gap-1 text-emerald-600"><CheckCircle2 size={12} /> Analiz edildi · {b.specTarih ? tarih(b.specTarih) : ''}</span>
-                            : bu ? <span className="inline-flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Okunuyor…</span>
-                            : hata[b.id] ? <span className="inline-flex items-center gap-1 text-rose-600"><AlertTriangle size={12} /> {hata[b.id]}</span>
-                            : <Badge tone="gri">Bekliyor</Badge>}
+                          {bu ? <span className="inline-flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Okunuyor…</span>
+                            : b.spec ? <span className="inline-flex items-center gap-1 text-emerald-600"><CheckCircle2 size={12} /> Analiz edildi · {b.specTarih ? tarih(b.specTarih) : ''}</span>
+                            : b.specDurum === 'hata' ? <span className="inline-flex items-center gap-1 text-rose-600"><AlertTriangle size={12} /> Okunamadı — "Yeniden" deneyebilirsin</span>
+                            : b.specDurum === 'atlandi' ? <span className="inline-flex items-center gap-1 text-amber-600"><AlertTriangle size={12} /> Görsel değil (PDF/HEIC olabilir)</span>
+                            : <Badge tone="gri">Sırada</Badge>}
                         </p>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         {b.spec && <Button size="sm" variant="ghost" onClick={() => setAcik((a) => ({ ...a, [b.id]: gizli ? true : false }))}>{gizli ? <ChevronDown size={14} /> : <ChevronUp size={14} />}</Button>}
-                        <Button size="sm" variant="soft" onClick={() => cikar(b)} disabled={bu || calisiyor}>{bu ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} {b.spec ? 'Yeniden' : 'Çıkar'}</Button>
+                        <Button size="sm" variant="soft" onClick={() => cikar(b)} disabled={bu}>{bu ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} {b.spec ? 'Yeniden' : 'Çıkar'}</Button>
                       </div>
                     </div>
                     {b.spec && !gizli && (
@@ -126,7 +108,7 @@ export default function Specler() {
         })}
       </div>
 
-      <p className="mt-5 text-xs text-metin-yum">Not: AI yalnızca görselde okunabilen bilgileri çıkarır, tahmin yürütmez. Sonuç eksikse fotoğrafın daha net/yüksek çözünürlüklü halini yükleyip "Yeniden" de.</p>
+      <p className="mt-5 text-xs text-metin-yum">AI yalnızca görselde okunabilen bilgileri çıkarır, tahmin yürütmez. Fotoğraf ne kadar net/yüksek çözünürlüklü olursa o kadar çok detay çıkar.</p>
     </>
   );
 }

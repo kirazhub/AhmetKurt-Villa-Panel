@@ -105,6 +105,7 @@ export interface Belge {
   notlar?: string;
   spec?: string;             // AI'nın belgeden çıkardığı teknik detaylar (m², ölçü, kot...)
   specTarih?: string;        // spec'in çıkarıldığı tarih (ISO)
+  specDurum?: 'islendi' | 'hata' | 'atlandi'; // otomatik işleyici durumu (tekrar denememek için)
 }
 
 /** Proje künyesi (sabit bilgiler) */

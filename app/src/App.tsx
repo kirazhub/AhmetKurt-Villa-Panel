@@ -11,6 +11,7 @@ import Odemeler from './pages/Odemeler';
 import Teklifler from './pages/Teklifler';
 import Belgeler from './pages/Belgeler';
 import Specler from './pages/Specler';
+import OtomatikSpec from './components/OtomatikSpec';
 import Takvim from './pages/Takvim';
 import Rehber from './pages/Rehber';
 import AsistanAI from './pages/AsistanAI';
@@ -60,6 +61,7 @@ export default function App() {
   return (
     <Layout>
       <OtomatikYedek />
+      <OtomatikSpec />
       <Routes>
         <Route path="/" element={<Ozet />} />
         <Route path="/istek-listesi" element={<IstekListesi />} />
