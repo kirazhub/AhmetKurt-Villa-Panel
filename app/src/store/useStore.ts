@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Faz, Mahal, IsKalemi, Taseron, Teklif, Odeme, Belge, Proje, SahaGunluk, Sarfiyat, IstekKalemi, Ders } from '../types';
+import type { Faz, Mahal, IsKalemi, Taseron, Teklif, Odeme, Belge, Proje, SahaGunluk, Sarfiyat, IstekKalemi, Ders, Danisma } from '../types';
 import { PROJE, FAZLAR, MAHALLER, IS_KALEMLERI, ISTEK_LISTESI } from '../data/seed';
 import { uid } from '../lib/format';
 
@@ -24,6 +24,7 @@ interface State {
   istekListesi: IstekKalemi[];
   istekBrifing: string;    // AI'nın "ihtiyacım olanlar" üst metni
   dersler: Ders[];         // öğrenme hafızası (hata/doğru iş/genel)
+  danismalar: Danisma[];   // danışma geçmişi (yerel önbellek; sunucuda da kalıcı)
   rehberBrifing: Record<string, string>; // rehber bölüm id -> AI brifing metni (önbellek)
 
   // İş kalemleri
@@ -72,6 +73,9 @@ interface State {
   // Öğrenme hafızası
   dersEkle: (d: Omit<Ders, 'id'>) => string;
   dersSil: (id: string) => void;
+
+  // Danışma önbelleği
+  danismaSet: (liste: Danisma[]) => void;
   // Proje künyesi
   projeGuncelle: (patch: Partial<Proje>) => void;
   // Bakım
@@ -96,6 +100,7 @@ export const useStore = create<State>()(
       istekListesi: ISTEK_LISTESI,
       istekBrifing: '',
       dersler: [],
+      danismalar: [],
       rehberBrifing: {},
 
       isKalemiEkle: (k) => {
@@ -209,6 +214,8 @@ export const useStore = create<State>()(
       },
       dersSil: (id) =>
         set((s) => ({ dersler: s.dersler.filter((x) => x.id !== id) })),
+
+      danismaSet: (liste) => set({ danismalar: liste }),
 
       projeGuncelle: (patch) => set((s) => ({ proje: { ...s.proje, ...patch } })),
       sifirla: () =>

@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 
 dotenv.config();
 
@@ -120,10 +121,92 @@ app.post('/api/ai/analiz', async (req, res) => {
   }
 });
 
+// ============================================================================
+// KALICI KAYIT (dosya tabanlı — hiçbir bilgi kaybı olmasın; ileride VPS/DB'ye taşınır)
+// ============================================================================
+const VERI = join(__dirname, 'veri');
+if (!existsSync(VERI)) mkdirSync(VERI, { recursive: true });
+const oku = (dosya, varsayilan) => { try { return JSON.parse(readFileSync(join(VERI, dosya), 'utf8')); } catch { return varsayilan; } };
+const yaz = (dosya, veri) => { try { writeFileSync(join(VERI, dosya), JSON.stringify(veri, null, 2)); } catch (e) { console.error('yaz hata', e); } };
+
+// --- İstanbul odaklı danışma sistem promptu ---
+function danismaPromptu(baglam) {
+  return `Sen "Ahmet Kurt Villa Projesi"nin kıdemli inşaat danışmanısın. Kullanıcı sana her konuda soru sorar; sen 3 kaynağı HARMANLAYARAK cevap yazarsın:
+1) İÇ VERİ: panelin anlık durumu (aşağıda).
+2) CANLI WEB ARAŞTIRMASI: güncel bilgileri ve FİYATLARI internetten araştır.
+3) HESAP-KİTAP: metraj × birim fiyat ile somut maliyet çıkar.
+
+ÇOK ÖNEMLİ — PİYASA ODAĞI:
+- SADECE İSTANBUL piyasasına göre karar ver. Dünya/Türkiye geneli ortalama KULLANMA.
+- Özellikle İSTANBUL AVRUPA YAKASI, ARNAVUTKÖY ve YENİ İSTANBUL HAVALİMANI çevresindeki inşaat firmaları, tedarikçiler ve malzeme fiyatlarını araştır/baz al.
+- Fiyatları her zaman 3 KALİTE KATEGORİSİNDE ver: EKONOMİK (alt), ORTA, ÜST (lüks). Her kategoride yaklaşık birim fiyat + ne fark eder, açıkla.
+- Mümkünse gerçek firma/ürün örnekleri ve güncel fiyat aralıkları ver; bulamazsan "şu bölgedeki şu tip firmalardan teklif al" diye yönlendir. Uydurma kesin rakam verme; aralık ve kaynak ver.
+
+KULLANICI: İnşaat bilmeyen mal sahibi+yönetici. Türkçe, net, madde madde, teknik terimi parantezle açıkla.
+
+PANELİN ANLIK DURUMU:
+${baglam || '(panel verisi gönderilmedi)'}`;
+}
+
+// --- Web aramalı çağrı (OpenRouter web plugin) ---
+async function claudeWeb(systemMetin, soru, maxTokens) {
+  const model = await modelSec();
+  const r = await fetch(`${API}/chat/completions`, {
+    method: 'POST',
+    headers: HEADERS(),
+    body: JSON.stringify({
+      model,
+      max_tokens: maxTokens,
+      plugins: [{ id: 'web', max_results: 6 }],
+      messages: [{ role: 'system', content: systemMetin }, { role: 'user', content: soru }],
+    }),
+  });
+  const d = await r.json();
+  if (!r.ok) throw { status: r.status, detay: d };
+  const msg = d.choices?.[0]?.message || {};
+  const metin = (msg.content || '').trim();
+  const kaynaklar = [];
+  (msg.annotations || []).forEach((a) => {
+    const u = a.url_citation || a.urlCitation;
+    if (u && u.url) kaynaklar.push({ baslik: u.title || u.url, url: u.url });
+  });
+  return { metin, model, kaynaklar };
+}
+
+// --- Danışma: sor (web araştırmalı) + kalıcı kaydet ---
+app.post('/api/danisma/sor', async (req, res) => {
+  if (!yapilandirilmis()) return res.status(503).json({ hata: 'OpenRouter API anahtarı tanımlı değil (.env).' });
+  try {
+    const { soru, baglam = '' } = req.body || {};
+    if (!soru || !String(soru).trim()) return res.status(400).json({ hata: 'Soru boş.' });
+    const { metin, model, kaynaklar } = await claudeWeb(danismaPromptu(baglam), String(soru), 2200);
+    const kayit = { id: 'dn-' + Date.now().toString(36), tarih: new Date().toISOString(), soru: String(soru), cevap: metin, kaynaklar, model };
+    const liste = oku('danisma.json', []);
+    liste.push(kayit);
+    yaz('danisma.json', liste);
+    res.json(kayit);
+  } catch (e) {
+    res.status(e.status || 500).json({ hata: 'Danışma başarısız', detay: e.detay || String(e) });
+  }
+});
+
+// --- Danışma geçmişi (kalıcı) ---
+app.get('/api/danisma/gecmis', (_req, res) => res.json(oku('danisma.json', [])));
+app.delete('/api/danisma/:id', (req, res) => {
+  const liste = oku('danisma.json', []).filter((x) => x.id !== req.params.id);
+  yaz('danisma.json', liste);
+  res.json({ ok: true });
+});
+
+// --- Tam panel durumu yedeği (hiçbir bilgi kaybı olmasın) ---
+app.post('/api/yedek', (req, res) => { yaz('durum.json', { tarih: new Date().toISOString(), durum: req.body?.durum ?? req.body }); res.json({ ok: true, tarih: new Date().toISOString() }); });
+app.get('/api/yedek', (_req, res) => res.json(oku('durum.json', null)));
+
 // Üretimde derlenmiş paneli de servis et (varsa)
 app.use(express.static(join(__dirname, '..', 'app', 'dist')));
 
 app.listen(PORT, () => {
   console.log(`AI arka uç (OpenRouter) çalışıyor → http://localhost:${PORT}`);
   console.log(`OpenRouter anahtarı: ${yapilandirilmis() ? 'TANIMLI ✓' : 'EKSİK (.env doldur) ✗'}`);
+  console.log(`Kalıcı kayıt klasörü: ${VERI}`);
 });

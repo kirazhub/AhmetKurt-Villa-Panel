@@ -1,5 +1,7 @@
 import { Routes, Route } from 'react-router-dom';
+import { useEffect, useRef } from 'react';
 import { Layout } from './components/Layout';
+import { useStore } from './store/useStore';
 import Ozet from './pages/Ozet';
 import IsTakibi from './pages/IsTakibi';
 import Taseronlar from './pages/Taseronlar';
@@ -14,16 +16,39 @@ import Raporlar from './pages/Raporlar';
 import Ogrenme from './pages/Ogrenme';
 import SahaKaydi from './pages/SahaKaydi';
 import IstekListesi from './pages/IstekListesi';
+import Danisma from './pages/Danisma';
 import Proje from './pages/Proje';
+
+// Tüm panel durumunu sunucuya otomatik yedekler (hiçbir bilgi kaybı olmasın).
+function OtomatikYedek() {
+  const disaAktar = useStore((s) => s.disaAktar);
+  const sonRef = useRef('');
+  useEffect(() => {
+    const yedekle = () => {
+      try {
+        const durum = disaAktar();
+        if (durum === sonRef.current) return; // değişmediyse gönderme
+        sonRef.current = durum;
+        fetch('/api/yedek', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ durum }) }).catch(() => {});
+      } catch { /* yoksay */ }
+    };
+    const t = setInterval(yedekle, 30000);
+    const ilk = setTimeout(yedekle, 4000);
+    return () => { clearInterval(t); clearTimeout(ilk); };
+  }, [disaAktar]);
+  return null;
+}
 
 export default function App() {
   return (
     <Layout>
+      <OtomatikYedek />
       <Routes>
         <Route path="/" element={<Ozet />} />
         <Route path="/istek-listesi" element={<IstekListesi />} />
         <Route path="/rehber" element={<Rehber />} />
         <Route path="/asistan" element={<AsistanAI />} />
+        <Route path="/danisma" element={<Danisma />} />
         <Route path="/ogrenme" element={<Ogrenme />} />
         <Route path="/raporlar" element={<Raporlar />} />
         <Route path="/is-takibi" element={<IsTakibi />} />

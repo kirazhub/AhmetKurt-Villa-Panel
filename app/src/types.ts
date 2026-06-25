@@ -231,3 +231,18 @@ export interface Ders {
   taseronId?: string;
   kaynak: 'kullanici' | 'ai';
 }
+
+// ============================================================================
+// DANIŞMA — Web araştırmalı soru-cevap (kalıcı; hiçbir soru/cevap kaybolmaz)
+// ============================================================================
+
+export interface DanismaKaynak { baslik?: string; url: string; }
+
+export interface Danisma {
+  id: string;
+  tarih: string;          // ISO
+  soru: string;
+  cevap: string;
+  kaynaklar?: DanismaKaynak[];
+  model?: string;
+}
