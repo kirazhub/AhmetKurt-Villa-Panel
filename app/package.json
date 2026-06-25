@@ -15,6 +15,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
     "dxf-viewer": "^1.0.48",
+    "heic2any": "^0.0.4",
     "lucide-react": "^1.21.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",

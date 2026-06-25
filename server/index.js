@@ -21,6 +21,13 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 
+// --- Basit şifre koruması (uygulama seviyesi; tarayıcı fetch ile sorunsuz) ---
+const VILLA_SIFRE = process.env.VILLA_SIFRE || '123456';
+app.use('/api', (req, res, next) => {
+  if ((req.headers['x-villa-sifre'] || '') === VILLA_SIFRE) return next();
+  return res.status(401).json({ hata: 'Yetkisiz — şifre gerekli' });
+});
+
 const yapilandirilmis = () => Boolean(KEY);
 
 // --- En güncel Opus modelini otomatik seç (env ile sabitlenebilir) ---
