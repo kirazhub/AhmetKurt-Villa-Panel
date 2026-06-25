@@ -31,7 +31,7 @@ export const NAV = [
 
 function NavItems({ onClick }: { onClick?: () => void }) {
   return (
-    <nav className="px-3 py-2 space-y-1">
+    <nav className="px-3 py-2 space-y-1 flex-1 min-h-0 overflow-y-auto">
       {NAV.map((n) => (
         <NavLink
           key={n.to}
@@ -41,7 +41,7 @@ function NavItems({ onClick }: { onClick?: () => void }) {
           className={({ isActive }) =>
             clsx(
               'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition',
-              isActive ? 'bg-marka-500 text-white shadow-sm' : 'text-slate-300 hover:bg-white/10 hover:text-white',
+              isActive ? 'bg-marka-500 text-white shadow-sm' : 'text-slate-200 hover:bg-white/10 hover:text-white',
             )
           }
         >
@@ -55,7 +55,7 @@ function NavItems({ onClick }: { onClick?: () => void }) {
 
 function Marka() {
   return (
-    <div className="px-5 py-5 flex items-center gap-3">
+    <div className="px-5 py-5 flex items-center gap-3 shrink-0">
       <div className="w-10 h-10 rounded-xl bg-marka-500 flex items-center justify-center text-white font-bold shadow">AK</div>
       <div className="leading-tight">
         <p className="text-white font-semibold text-sm">Ahmet Kurt Villa</p>
@@ -77,7 +77,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <aside className="hidden lg:flex w-64 shrink-0 flex-col bg-slate-900 sticky top-0 h-screen">
         <Marka />
         <NavItems />
-        <div className="mt-auto p-4 text-xs text-slate-500 border-t border-white/5">
+        <div className="mt-auto p-4 text-xs text-slate-400 border-t border-white/5 shrink-0">
           Ruhsat No {proje.ruhsatNo} · {proje.yapiSinifi}
         </div>
       </aside>
@@ -87,7 +87,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <div className="fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 bg-black/40" onClick={() => setMobilAcik(false)} />
           <aside className="absolute left-0 top-0 h-full w-72 bg-slate-900 flex flex-col">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between shrink-0">
               <Marka />
               <button onClick={() => setMobilAcik(false)} className="p-2 mr-3 text-slate-400 hover:text-white"><X size={20} /></button>
             </div>
