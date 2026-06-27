@@ -49,8 +49,18 @@ export async function dosyaListe(tur?: string): Promise<SunucuDosya[]> {
 }
 
 export async function dosyaYukle(file: File, tur = 'foto', etiket = '', tarihCekim = ''): Promise<SunucuDosya> {
-  const orijinal = await kucult(file, 2400, 0.85);   // saklanan "orijinal" (yüksek detay)
-  const onizleme = await kucult(file, 420, 0.7);     // grid için küçük
+  let kaynak: File = file;
+  // HEIC veya tarayıcının çizemediği format → sunucuda JPG'ye çevir
+  try {
+    await kucult(kaynak, 64, 0.5); // hızlı çizilebilirlik testi
+  } catch {
+    const r = await fetch('/api/heic-jpg', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file });
+    if (!r.ok) throw new Error('Görsel dönüştürülemedi (HEIC?)');
+    const jpg = await r.blob();
+    kaynak = new File([jpg], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' });
+  }
+  const orijinal = await kucult(kaynak, 2400, 0.85);   // saklanan "orijinal" (yüksek detay)
+  const onizleme = await kucult(kaynak, 420, 0.7);     // grid için küçük
   const r = await fetch('/api/dosya/yukle', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ad: file.name, tur, etiket, tarihCekim, orijinal, onizleme }),
