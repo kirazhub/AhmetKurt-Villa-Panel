@@ -12,6 +12,7 @@ import Teklifler from './pages/Teklifler';
 import Belgeler from './pages/Belgeler';
 import Specler from './pages/Specler';
 import MaliyetRaporu from './pages/MaliyetRaporu';
+import IlerlemePanosu from './pages/IlerlemePanosu';
 
 // Güncel USD/TRY kurunu günde bir çeker, store'a yazar.
 function OtomatikKur() {
@@ -98,6 +99,7 @@ export default function App() {
         <Route path="/belgeler" element={<Belgeler />} />
         <Route path="/specler" element={<Specler />} />
         <Route path="/maliyet-raporu" element={<MaliyetRaporu />} />
+        <Route path="/ilerleme" element={<IlerlemePanosu />} />
         <Route path="/heic" element={<HeicDonustur />} />
         <Route path="/takvim" element={<Takvim />} />
         <Route path="/proje" element={<Proje />} />

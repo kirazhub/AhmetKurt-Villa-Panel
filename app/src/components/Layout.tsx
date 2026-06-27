@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, ListChecks, HardHat, Wallet, Receipt,
-  GitCompareArrows, Images, CalendarClock, Building2, Menu, X, BookOpenText, Bot, FileBarChart, Truck, ClipboardList, Brain, MessagesSquare, ImageDown, Mailbox, MessageCircle, Ruler, Calculator,
+  GitCompareArrows, Images, CalendarClock, Building2, Menu, X, BookOpenText, Bot, FileBarChart, Truck, ClipboardList, Brain, MessagesSquare, ImageDown, Mailbox, MessageCircle, Ruler, Calculator, Activity,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useStore } from '../store/useStore';
 
 export const NAV = [
   { to: '/', ad: 'Özet', ikon: LayoutDashboard, end: true },
+  { to: '/ilerleme', ad: 'İlerleme Panosu', ikon: Activity },
   { to: '/istek-listesi', ad: 'Eksik Bilgiler', ikon: ClipboardList },
   { to: '/rehber', ad: 'İnşaat Rehberi', ikon: BookOpenText },
   { to: '/asistan', ad: 'AI Asistan', ikon: Bot },
