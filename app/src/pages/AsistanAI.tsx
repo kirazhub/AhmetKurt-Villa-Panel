@@ -19,9 +19,9 @@ const HIZLI = [
   'Önümüzdeki fazda nelere dikkat etmeliyim?',
 ];
 
-// AI'ya gönderilecek anlık panel özeti
-function baglamKur(s: ReturnType<typeof useStore.getState>): string {
-  const { proje, fazlar, isKalemleri, taseronlar, odemeler, dersler } = s;
+// AI'ya gönderilecek anlık panel özeti + AKILLI belge/spec seçimi
+function baglamKur(s: ReturnType<typeof useStore.getState>, soru?: string): string {
+  const { proje, fazlar, isKalemleri, taseronlar, odemeler, dersler, sunucuDosyalar, projeAnaliz } = s;
   const plan = toplamPlanlanan(isKalemleri);
   const ger = toplamGerceklesen(isKalemleri);
   const ilerleme = Math.round(genelIlerleme(isKalemleri));
@@ -33,6 +33,28 @@ function baglamKur(s: ReturnType<typeof useStore.getState>): string {
   const dersSatir = dersler.length
     ? dersler.slice(-15).map((d) => `  - [${d.tur}] ${d.baslik}: ${d.icerik}`).join('\n')
     : '  (henüz ders yok)';
+
+  // Analiz edilmiş belgeler
+  const specli = sunucuDosyalar.filter((d) => d.spec);
+  const belgeBaslik = specli.length
+    ? specli.map((d) => `  - ${d.ad}: ${(d.spec || '').split('\n')[0].replace(/^Belge türü:\s*/i, '').slice(0, 80)}`).join('\n')
+    : '  (henüz analiz edilmiş belge yok)';
+  const analizMetni = projeAnaliz?.metin ? `\nPROJE GENELİ ANALİZ (bütünleşik):\n${projeAnaliz.metin.slice(0, 8000)}` : '';
+
+  // AKILLI SEÇİM: sorudaki kelimelere göre ilgili paftaların TAM spec'i
+  let ilgili = '';
+  if (soru) {
+    const kelimeler = soru.toLowerCase().split(/[^a-zçğıöşü0-9]+/).filter((k) => k.length >= 4);
+    const eslesen = specli.filter((d) => {
+      const metin = ((d.spec || '') + ' ' + (d.ad || '')).toLowerCase();
+      return kelimeler.some((k) => metin.includes(k));
+    }).slice(0, 30);
+    if (eslesen.length) {
+      ilgili = `\n\nSORUYLA İLGİLİ PAFTALARIN TAM TEKNİK ANALİZİ — CEVABINI KESİNLİKLE BUNLARDAN VER, uydurma; rakam/ölçü/adet bunlarda yoksa "ilgili paftada bu bilgi yok" de:\n` +
+        eslesen.map((d) => `### ${d.ad}\n${(d.spec || '').slice(0, 2800)}`).join('\n\n');
+    }
+  }
+
   return `PROJE: ${proje.ad} — ${proje.konum}
 GENEL İLERLEME: %${ilerleme}
 BÜTÇE: planlanan ${tl(plan)}, gerçekleşen ${tl(ger)}, fark ${tl(plan - ger)}
@@ -42,7 +64,10 @@ GECİKEN İŞ: ${geciken.length ? geciken.map((g) => g.ad).join(', ') : 'yok'}
 FAZ DURUMLARI:
 ${fazSatir}
 ÖĞRENİLEN DERSLER (hatırla ve kararlarında kullan):
-${dersSatir}`;
+${dersSatir}
+
+YÜKLÜ VE ANALİZ EDİLMİŞ PAFTALAR (${specli.length} adet — mimari, statik, tesisat, elektrik):
+${belgeBaslik}${analizMetni}${ilgili}`;
 }
 
 // AI metnini basitçe biçimle (kalın **..** ve satırlar)
@@ -80,7 +105,8 @@ export default function AsistanAI() {
 
   const raporlariYenile = () => raporListe().then(setRaporlar).catch(() => {});
   const gecmisYenile = () => fetch('/api/sohbet/liste').then((r) => r.json()).then((d) => setGecmis(d.sohbetler || [])).catch(() => {});
-  useEffect(() => { raporlariYenile(); gecmisYenile(); }, []);
+  const dosyalariYenile = useStore((s) => s.dosyalariYenile);
+  useEffect(() => { raporlariYenile(); gecmisYenile(); dosyalariYenile(); }, [dosyalariYenile]);
 
   const mesajPdf = async (i: number) => {
     setPdfYap(i);
@@ -133,7 +159,7 @@ export default function AsistanAI() {
     setGirdi('');
     setYukleniyor(true);
     try {
-      const baglam = baglamKur(useStore.getState());
+      const baglam = baglamKur(useStore.getState(), soru);
       const r = await fetch('/api/ai/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mesajlar: yeni, baglam }),
