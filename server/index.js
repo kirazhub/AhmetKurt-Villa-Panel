@@ -140,30 +140,78 @@ app.post('/api/ai/belge-spec', async (req, res) => {
   try {
     const { ad = '', gorsel = '' } = req.body || {};
     if (!gorsel || !/^(data:image|https?:\/\/)/.test(String(gorsel))) return res.status(400).json({ hata: 'Geçerli bir görsel (dataURL veya http URL) gerekli' });
-    const sys = `Sen kıdemli bir mimari/inşaat belge analiz uzmanısın. Sana verilen görsel; mimari kat planı, görünüş, kesit, ölçü kağıdı, vaziyet planı, teknik çizim, fatura veya şantiye fotoğrafı olabilir. Görseldeki TÜM teknik bilgiyi eksiksiz, dürüst ve düzenli çıkar. Sadece görselde GERÇEKTEN görünen/yazan bilgiyi yaz; tahmin/uydurma YAPMA. Okunamayan yeri "okunamadı" diye belirt.
+    const sys = `Sen kıdemli bir mimar + inşaat (statik) + tesisat mühendisi gözüyle çalışan bir PROJE ANALİZ uzmanısın. Sana verilen görsel; vaziyet planı, mimari kat planı, görünüş, kesit, statik/kalıp planı, tesisat (sıhhi/ısıtma/elektrik) projesi, ölçü kağıdı, teknik çizim, fatura veya şantiye fotoğrafı olabilir. Önce belgenin TÜRÜNÜ tanı, sonra o türe uygun TÜM bilgiyi profesyonelce, derinlemesine çıkar. SADECE görselde GERÇEKTEN çizili/yazılı olanı yaz; tahmin/uydurma YAPMA. Okunamayan/görselde olmayan şeyi "okunamadı" ya da "bu paftada yok" diye belirt.
 
-YAZIM KURALLARI (çok önemli):
-- Kusursuz, akıcı ve dilbilgisi açısından DOĞRU Türkçe yaz. Bozuk kelime, harf hatası, eksik/yarım cümle KESİNLİKLE olmasın.
-- Türkçe karakterleri (ç, ğ, ı, ö, ş, ü) doğru kullan.
-- Rakamları ve yazıları görselden DİKKATLE oku; emin olmadığın bir değeri "okunamadı" yaz, yanlış/uydurma değer YAZMA.
-- Net, kısa ve düzenli başlıklarla yaz. Tümü Türkçe.`;
+YAZIM KURALLARI:
+- Kusursuz, akıcı, dilbilgisi DOĞRU Türkçe. Bozuk kelime/harf hatası/yarım cümle OLMASIN. Türkçe karakterleri (ç,ğ,ı,ö,ş,ü) doğru kullan.
+- Rakamları görselden dikkatle oku; emin olmadığını "okunamadı" yaz.
+- Net başlıklarla, madde madde yaz. Tümü Türkçe.`;
     const istem = `Belge: "${ad}"
 
-Bu görseli incele ve içindeki tüm teknik detayları başlıklar altında madde madde yaz:
+ÖNCE: Belgenin türünü tek satırda yaz (örn. "Belge türü: 1. Normal Kat Planı, Ö:1/50").
 
-**Ölçüler**: tüm uzunluk/en/boy/yükseklik değerleri (cm/m), aks aralıkları.
-**Alanlar (m²)**: her oda/mahal/kat ayrı ayrı; toplam alan varsa.
-**Kotlar / Seviyeler**: kat kotları, ±0.00, seviye farkları, eğim.
-**Mahal listesi**: oda/mekân isimleri ve numaraları.
-**Kapı / Pencere**: ölçüleri, adetleri, tipleri.
-**Malzeme & yapı notları**: beton sınıfı, donatı, duvar/yalıtım kalınlıkları, kaplama vb.
-**Diğer rakam ve notlar**: görselde yazan başka her teknik değer/açıklama.
+Sonra AŞAĞIDAKİ başlıklardan SADECE bu belgede karşılığı olanları, derinlemesine doldur:
 
-Görselde olmayan başlığı atla. Kısa girizgâh yazma, doğrudan başlıklarla başla.`;
-    const { metin } = await claudeVision(sys, istem, gorsel, 2800);
+**Genel / Antet**: proje adı, pafta adı-no, ölçek, çizen, ada/parsel, onay bilgileri.
+**Ölçüler & Akslar**: aks isimleri (1-2-3 / A-B-C), aks aralıkları, dış/iç ölçü zincirleri (cm), bina dış ölçüleri.
+**Alanlar (m²)**: her mahal/oda/kat ayrı; varsa toplam, taban oturumu, parsel.
+**Kotlar / Seviyeler / Eğim**: kat kotları, ±0.00, bodrum/zemin/kat kotları, arsa eğimi, istinat/şev.
+**Taşıyıcı Sistem (statik)**: KOLON konumları ve ölçüleri (örn. 30x60), perde/perde duvar yerleri, kiriş aksları, döşeme tipi (asmolen/plak/kirişsiz), radye/temel bilgisi, donatı notları — planda görünüyorsa.
+**Mahaller & Sirkülasyon**: oda/mekân isimleri-numaraları, ıslak hacimler (banyo/wc/mutfak), merdiven, asansör, hol/koridor, kapı geçişleri.
+**Kapı / Pencere**: tip, ölçü, adet, yön.
+**Tesisat (varsa)**: sıhhi tesisat boru güzergahları, gider/pis su hatları, ısıtma (radyatör/yerden), tesisat şaftları, elektrik panoları/hatları, kolon şaftları — YALNIZCA tesisat/mekanik/elektrik projesi paftasındaysa. Mimari planda yoksa "Tesisat detayı bu paftada yok (tesisat/mekanik projesi gerekir)" yaz.
+**Cephe / Çatı / Kaplama**: malzeme, kaplama, çatı tipi/eğimi — görünüş/kesitse.
+**Önemli Notlar & Riskler**: çizimde dikkat çeken her teknik not, uyarı, lejant açıklaması.
+
+Görselde olmayan başlığı ATLAMA — ama olmayan için kısaca "bu paftada yok" de. Kısa girizgâh yazma, doğrudan "Belge türü:" ile başla.`;
+    const { metin } = await claudeVision(sys, istem, gorsel, 3500);
     res.json({ spec: metin });
   } catch (e) {
     res.status(e.status || 500).json({ hata: 'Belge analizi başarısız', detay: e.detay || String(e?.message || e) });
+  }
+});
+
+// --- Tüm planlardan BÜTÜNLEŞİK proje analiz raporu ---
+app.post('/api/ai/proje-analiz', async (req, res) => {
+  if (!yapilandirilmis()) return res.status(503).json({ hata: 'OpenRouter API anahtarı tanımlı değil (.env).' });
+  try {
+    const { specler = '', proje = '' } = req.body || {};
+    if (!specler.trim()) return res.status(400).json({ hata: 'Önce belgelerin teknik analizi (spec) çıkarılmalı.' });
+    const sys = `Sen kıdemli bir mimar + inşaat (statik) + tesisat mühendisi ekibinin koordinatörüsün. Sana bir villa projesinin paftalarından (her biri ayrı görselden) çıkarılmış teknik analizler veriliyor. Görevin: bunları BİRLEŞTİREREK projenin BÜTÜNLEŞİK bir analiz raporunu yazmak — sanki tüm projeyi masaya yatırıp inceleyen bir teknik ofis gibi. Sadece verilen analizlere dayan; uydurma. Bilgi eksikse "ilgili pafta yüklenmemiş" diye dürüstçe belirt. Kusursuz, profesyonel, akıcı Türkçe yaz.`;
+    const istem = `PROJE KÜNYESİ:
+${proje || '(verilmedi)'}
+
+PAFTALARDAN ÇIKARILMIŞ TEKNİK ANALİZLER:
+${String(specler).slice(0, 30000)}
+
+Yukarıdaki verilere dayanarak BÜTÜNLEŞİK PROJE ANALİZ RAPORU yaz. Başlıklar:
+
+## 1. Projenin Genel Tanımı
+Ne tür yapı, kaç kat, toplam/parsel alanı, genel kurgu.
+
+## 2. Mimari Analiz
+Kat kat şema (bodrum/zemin/1.kat), mahal listesi ve işlevleri, m² dağılımı, sirkülasyon (merdiven/hol/giriş), ıslak hacimlerin konumu, kapı-pencere düzeni.
+
+## 3. Taşıyıcı Sistem (Statik)
+Temel tipi, kolon/perde yerleşimi ve ölçüleri, aks sistemi, döşeme tipi, kiriş kurgusu — paftalardan okunabilen kadarıyla. Okunamayan/eksik statik bilgi varsa belirt.
+
+## 4. Tesisat & Altyapı
+Sıhhi/ısıtma/elektrik tesisatına dair paftalarda görünen bilgi. Görünmüyorsa: "Tesisat/mekanik/elektrik projesi paftaları yüklenmemiş" de ve hangi paftaların gerektiğini söyle.
+
+## 5. Kot, Eğim ve Zemin
+Kat kotları, arsa eğimi, bodrum-toprak ilişkisi, su/drenaj açısından dikkat noktaları.
+
+## 6. Tespit Edilen Eksikler & Çelişkiler
+Paftalar arası tutarsızlık, eksik ölçü, yüklenmemiş pafta türleri (statik, tesisat, elektrik, detay).
+
+## 7. Öneriler & Dikkat Noktaları
+İnşaat aşamasında kritik konular, hangi ek paftalar/projeler temin edilmeli, riskler.
+
+Her başlığı somut verilerle (rakam, m², kot, mahal adı) doldur. Veri yoksa dürüstçe eksikliği yaz.`;
+    const { metin, model } = await claude(sys, [{ role: 'user', icerik: istem }], 6000);
+    res.json({ analiz: metin, model });
+  } catch (e) {
+    res.status(e.status || 500).json({ hata: 'Proje analizi başarısız', detay: e.detay || String(e?.message || e) });
   }
 });
 
