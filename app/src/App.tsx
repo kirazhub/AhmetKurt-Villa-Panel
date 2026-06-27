@@ -14,6 +14,9 @@ import Specler from './pages/Specler';
 import MaliyetRaporu from './pages/MaliyetRaporu';
 import IlerlemePanosu from './pages/IlerlemePanosu';
 import Hakedis from './pages/Hakedis';
+import NakitAkisi from './pages/NakitAkisi';
+import Fatura from './pages/Fatura';
+import KaliteKontrol from './pages/KaliteKontrol';
 
 // Güncel USD/TRY kurunu günde bir çeker, store'a yazar.
 function OtomatikKur() {
@@ -102,6 +105,9 @@ export default function App() {
         <Route path="/maliyet-raporu" element={<MaliyetRaporu />} />
         <Route path="/ilerleme" element={<IlerlemePanosu />} />
         <Route path="/hakedis" element={<Hakedis />} />
+        <Route path="/nakit" element={<NakitAkisi />} />
+        <Route path="/fatura" element={<Fatura />} />
+        <Route path="/kalite" element={<KaliteKontrol />} />
         <Route path="/heic" element={<HeicDonustur />} />
         <Route path="/takvim" element={<Takvim />} />
         <Route path="/proje" element={<Proje />} />

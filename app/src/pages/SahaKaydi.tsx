@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
-import { Truck, Users, Package, Plus, Trash2, CalendarDays } from 'lucide-react';
+import { Truck, Users, Package, Plus, Trash2, CalendarDays, FileDown } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { useStore } from '../store/useStore';
 import { PageHeader, Card, CardBody, Button, Stat, Modal, Field, Input, Select, Textarea, TableWrap, EmptyState, Badge } from '../components/ui';
 import { tl, sayi, tarih, bugun } from '../lib/format';
 import { BIRIM_ETIKET, type Birim } from '../types';
+import { pdfUret } from '../lib/pdf';
 
 const BIRIMLER: Birim[] = ['m2', 'm3', 'mtul', 'adet', 'ton', 'kg', 'set', 'gtr'];
 const MALZEME_ONERI = ['İnşaat demiri', 'Hazır beton', 'Çimento', 'Tuğla', 'Kum', 'Çakıl', 'Kereste', 'Strafor (EPS)', 'Seramik', 'Mermer', 'Boya', 'Alçı', 'Doğal taş'];
@@ -13,6 +14,16 @@ export default function SahaKaydi() {
   const { sahaGunlukleri, sarfiyatlar, fazlar, sahaEkle, sahaSil, sarfiyatEkle, sarfiyatSil } = useStore();
   const [sahaModal, setSahaModal] = useState(false);
   const [malzemeModal, setMalzemeModal] = useState(false);
+
+  const gunlukPdf = async () => {
+    const g = [...sahaGunlukleri].sort((a, b) => b.tarih.localeCompare(a.tarih));
+    const govde = `## Şantiye Günlüğü
+${g.length === 0 ? '(kayıt yok)' : g.map((x) => `### ${tarih(x.tarih)}${x.hava ? ' · ' + x.hava : ''}\nKamyon: ${x.kamyon || 0} · İşçi: ${x.isci || 0} · Çalışma: ${x.calismaSaati || 0} saat${x.notlar ? '\nNot: ' + x.notlar : ''}`).join('\n\n')}
+
+## Malzeme Sarfiyatı
+${sarfiyatlar.length === 0 ? '(kayıt yok)' : sarfiyatlar.map((s) => `- ${tarih(s.tarih)} · ${s.malzeme}: ${sayi(s.miktar)} ${s.birim}${s.tutar ? ' · ' + tl(s.tutar) : ''}${s.tedarikci ? ' · ' + s.tedarikci : ''}`).join('\n')}`;
+    try { await pdfUret('Şantiye Günlüğü — ' + new Date().toLocaleDateString('tr-TR'), govde, 'santiye'); } catch { alert('PDF oluşturulamadı.'); }
+  };
 
   const [sg, setSg] = useState({ tarih: bugun(), kamyon: '', isci: '', calismaSaati: '', hava: 'güneşli', fazId: '', notlar: '' });
   const [mz, setMz] = useState({ tarih: bugun(), malzeme: '', miktar: '', birim: 'ton' as Birim, birimFiyat: '', tedarikci: '', fazId: '', notlar: '' });
@@ -67,6 +78,7 @@ export default function SahaKaydi() {
         baslik="Saha Kaydı"
         aciklama="Kaç kamyon, kaç işçi, hangi malzeme ne kadar — gir, AI maliyet raporu çıkarsın"
         sag={<>
+          <Button variant="ghost" size="sm" onClick={gunlukPdf}><FileDown size={15} /> PDF</Button>
           <Button variant="soft" size="sm" onClick={() => setSahaModal(true)}><Plus size={15} /> Günlük Kayıt</Button>
           <Button size="sm" onClick={() => setMalzemeModal(true)}><Plus size={15} /> Malzeme</Button>
         </>}

@@ -179,6 +179,24 @@ app.post('/api/ai/belge-spec', async (req, res) => {
   }
 });
 
+// --- Faturadan harcama bilgisi çıkar (vision) ---
+app.post('/api/ai/fatura-oku', async (req, res) => {
+  if (!yapilandirilmis()) return res.status(503).json({ hata: 'OpenRouter API anahtarı tanımlı değil (.env).' });
+  try {
+    const { gorsel = '' } = req.body || {};
+    if (!gorsel || !/^(data:image|https?:\/\/)/.test(String(gorsel))) return res.status(400).json({ hata: 'Geçerli görsel gerekli' });
+    const sys = 'Sen bir fatura/fiş okuma uzmanısın. Verilen görselden bilgileri çıkar. Sadece GERÇEKTEN yazan bilgiyi al; uydurma. Çıktı SADECE geçerli JSON olsun.';
+    const istem = `Bu fatura/fiş görselinden çıkar ve SADECE JSON döndür:
+{"firma":"satıcı firma","tarih":"YYYY-MM-DD","tutar":<KDV DAHİL toplam, sadece sayı>,"kdv":<kdv tutarı, yoksa 0>,"kategori":"<Beton|Demir|Hafriyat|Elektrik|Tesisat|Nakliye|Malzeme|Diğer>","aciklama":"ne alındı kısaca"}
+Okunamayan alanı boş bırak; tutarı binlik ayraç/para birimi olmadan sayı yap.`;
+    const { metin } = await claudeVision(sys, istem, gorsel, 800);
+    const veri = jsonAyikla(metin) || {};
+    res.json({ veri });
+  } catch (e) {
+    res.status(e.status || 500).json({ hata: 'Fatura okunamadı', detay: e.detay || String(e?.message || e) });
+  }
+});
+
 // --- Tüm planlardan BÜTÜNLEŞİK proje analiz raporu ---
 app.post('/api/ai/proje-analiz', async (req, res) => {
   if (!yapilandirilmis()) return res.status(503).json({ hata: 'OpenRouter API anahtarı tanımlı değil (.env).' });

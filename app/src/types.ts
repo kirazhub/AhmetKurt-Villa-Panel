@@ -123,6 +123,19 @@ export interface MaliyetKategori {
   kalemler: MaliyetKalem[];
   altToplam?: { ekonomik?: number; orta?: number; premium?: number };
 }
+
+/** Fatura/harcama kaydı (AI fatura görselinden çıkarabilir) */
+export interface Harcama {
+  id: string;
+  firma?: string;
+  tutar: number;
+  tarih: string;          // ISO
+  kategori?: string;
+  aciklama?: string;
+  dosyaId?: string;       // sunucu görsel deposundaki fatura
+  kdv?: number;
+}
+
 export interface MaliyetRaporu {
   tarih: string;          // ISO
   ozet?: string;

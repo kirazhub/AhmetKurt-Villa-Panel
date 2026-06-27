@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { dosyaListe, type SunucuDosya } from '../lib/sunucuGorsel';
-import type { Faz, Mahal, IsKalemi, Taseron, Teklif, Odeme, Belge, Proje, SahaGunluk, Sarfiyat, IstekKalemi, Ders, Danisma, Firma, RfqKayit, GonderenProfil, MaliyetRaporu } from '../types';
+import type { Faz, Mahal, IsKalemi, Taseron, Teklif, Odeme, Belge, Proje, SahaGunluk, Sarfiyat, IstekKalemi, Ders, Danisma, Firma, RfqKayit, GonderenProfil, MaliyetRaporu, Harcama } from '../types';
 import { PROJE, FAZLAR, MAHALLER, IS_KALEMLERI, ISTEK_LISTESI } from '../data/seed';
 import { uid } from '../lib/format';
 
@@ -32,7 +32,9 @@ interface State {
   rehberBrifing: Record<string, string>; // rehber bölüm id -> AI brifing metni (önbellek)
   maliyetRaporu: MaliyetRaporu | null; // AI'nın ürettiği 3 senaryolu maliyet raporu
   sunucuDosyalar: SunucuDosya[]; // sunucu görsel deposu listesi (cache; sunucudan gelir)
-  projeAnaliz: { metin: string; tarih: string } | null; // tüm planlardan bütünleşik analiz
+  projeAnaliz: { metin: string; tarih: string } | null;
+  harcamalar: Harcama[];
+  kaliteDurum: Record<string, boolean>; // 'fazId::madde' -> işaretli
   usdKur: number | null;   // güncel 1 USD = ? TL
   usdKurTarih: string;     // kurun tarihi
 
@@ -65,6 +67,9 @@ interface State {
   // Maliyet raporu
   maliyetRaporuKaydet: (r: MaliyetRaporu | null) => void;
   projeAnalizKaydet: (a: { metin: string; tarih: string } | null) => void;
+  harcamaEkle: (h: Omit<Harcama, 'id'>) => string;
+  harcamaSil: (id: string) => void;
+  kaliteToggle: (anahtar: string) => void;
   dosyalariYenile: () => Promise<void>;
   sunucuDosyaSpec: (id: string, patch: Partial<SunucuDosya>) => void;
   kurGuncelle: (usd: number, tarih: string) => void;
@@ -130,6 +135,8 @@ export const useStore = create<State>()(
       rehberBrifing: {},
       maliyetRaporu: null,
       projeAnaliz: null,
+      harcamalar: [],
+      kaliteDurum: {},
       sunucuDosyalar: [],
       usdKur: null,
       usdKurTarih: '',
@@ -199,6 +206,9 @@ export const useStore = create<State>()(
       maliyetRaporuKaydet: (r) => set(() => ({ maliyetRaporu: r })),
 
       projeAnalizKaydet: (a) => set(() => ({ projeAnaliz: a })),
+      harcamaEkle: (h) => { const id = uid('hrc'); set((st) => ({ harcamalar: [...st.harcamalar, { ...h, id }] })); return id; },
+      harcamaSil: (id) => set((st) => ({ harcamalar: st.harcamalar.filter((x) => x.id !== id) })),
+      kaliteToggle: (anahtar) => set((st) => ({ kaliteDurum: { ...st.kaliteDurum, [anahtar]: !st.kaliteDurum[anahtar] } })),
 
       dosyalariYenile: async () => { try { const d = await dosyaListe(); set(() => ({ sunucuDosyalar: d })); } catch { /* yoksay */ } },
       sunucuDosyaSpec: (id, patch) => set((st) => ({ sunucuDosyalar: st.sunucuDosyalar.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
@@ -277,14 +287,14 @@ export const useStore = create<State>()(
       sifirla: () =>
         set({
           proje: PROJE, fazlar: FAZLAR, mahaller: MAHALLER, isKalemleri: IS_KALEMLERI,
-          taseronlar: [], teklifler: [], odemeler: [], belgeler: [], sahaGunlukleri: [], sarfiyatlar: [], rehberBrifing: {}, maliyetRaporu: null, projeAnaliz: null, usdKur: null, usdKurTarih: '',
+          taseronlar: [], teklifler: [], odemeler: [], belgeler: [], sahaGunlukleri: [], sarfiyatlar: [], rehberBrifing: {}, maliyetRaporu: null, projeAnaliz: null, harcamalar: [], kaliteDurum: {}, usdKur: null, usdKurTarih: '',
           istekListesi: ISTEK_LISTESI, istekBrifing: '', dersler: [], firmalar: [], rfqKayitlari: [],
           gonderenProfil: { ad: 'Raif Kurt', unvan: 'Proje Yetkilisi', telefon: '0532 309 13 83' },
         }),
 
       disaAktar: () => {
-        const { proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler, sahaGunlukleri, sarfiyatlar, istekListesi, istekBrifing, rehberBrifing, maliyetRaporu, projeAnaliz, usdKur, usdKurTarih, dersler, firmalar, rfqKayitlari, gonderenProfil } = get();
-        return JSON.stringify({ proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler, sahaGunlukleri, sarfiyatlar, istekListesi, istekBrifing, rehberBrifing, maliyetRaporu, projeAnaliz, usdKur, usdKurTarih, dersler, firmalar, rfqKayitlari, gonderenProfil }, null, 2);
+        const { proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler, sahaGunlukleri, sarfiyatlar, istekListesi, istekBrifing, rehberBrifing, maliyetRaporu, projeAnaliz, harcamalar, kaliteDurum, usdKur, usdKurTarih, dersler, firmalar, rfqKayitlari, gonderenProfil } = get();
+        return JSON.stringify({ proje, fazlar, mahaller, isKalemleri, taseronlar, teklifler, odemeler, belgeler, sahaGunlukleri, sarfiyatlar, istekListesi, istekBrifing, rehberBrifing, maliyetRaporu, projeAnaliz, harcamalar, kaliteDurum, usdKur, usdKurTarih, dersler, firmalar, rfqKayitlari, gonderenProfil }, null, 2);
       },
       iceAktar: (json) => {
         try {
@@ -305,6 +315,8 @@ export const useStore = create<State>()(
             rehberBrifing: d.rehberBrifing ?? {},
             maliyetRaporu: d.maliyetRaporu ?? null,
             projeAnaliz: d.projeAnaliz ?? null,
+            harcamalar: d.harcamalar ?? [],
+            kaliteDurum: d.kaliteDurum ?? {},
             usdKur: d.usdKur ?? null,
             usdKurTarih: d.usdKurTarih ?? '',
             dersler: d.dersler ?? [],
