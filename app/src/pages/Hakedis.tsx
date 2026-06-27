@@ -1,17 +1,19 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Receipt, Loader2, RefreshCw, FileDown, Sparkles, Plus, HardHat, Wallet, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { PageHeader, Card, CardBody, Button, Field, Input, Select } from '../components/ui';
 import { tl, bugun } from '../lib/format';
 import { kalemPlanlanan, taseronOdemeToplam } from '../lib/calc';
 import { pdfUret } from '../lib/pdf';
+import { projeBaglami } from '../lib/aiBaglam';
 
 export default function Hakedis() {
-  const { taseronlar, isKalemleri, odemeler, odemeEkle } = useStore();
+  const { taseronlar, isKalemleri, odemeler, odemeEkle, dosyalariYenile } = useStore();
   const [degerlendirme, setDegerlendirme] = useState('');
   const [yukleniyor, setYukleniyor] = useState(false);
   const [pdfYap, setPdfYap] = useState(false);
   const [odemeForm, setOdemeForm] = useState<{ taseronId: string; tutar: string; tur: 'avans' | 'hakedis' | 'kesin' } | null>(null);
+  useEffect(() => { dosyalariYenile(); }, [dosyalariYenile]);
 
   // Taşeron bazında hakediş: hak edilen = Σ(iş planlanan × ilerleme%); ödenen; kalan
   const satirlar = taseronlar.map((t) => {
@@ -36,7 +38,8 @@ export default function Hakedis() {
   const degerlendir = async () => {
     setYukleniyor(true);
     try {
-      const baglam = `HAKEDİŞ DURUMU (taşeron bazında):\n${satirlar.map((x) => `- ${x.t.ad} (${x.t.uzmanlik}): sözleşme ${tl(x.sozlesme)}, hak edilen ${tl(x.hakEdilen)}, ödenen ${tl(x.odenen)}, kalan ${tl(x.kalan)}`).join('\n')}\nTOPLAM: hak edilen ${tl(toplamHak)}, ödenen ${tl(toplamOdenen)}, kalan ${tl(toplamKalan)}`;
+      const ek = `HAKEDİŞ DURUMU (taşeron bazında):\n${satirlar.map((x) => `- ${x.t.ad} (${x.t.uzmanlik}): sözleşme ${tl(x.sozlesme)}, hak edilen ${tl(x.hakEdilen)}, ödenen ${tl(x.odenen)}, kalan ${tl(x.kalan)}`).join('\n')}\nTOPLAM: hak edilen ${tl(toplamHak)}, ödenen ${tl(toplamOdenen)}, kalan ${tl(toplamKalan)}`;
+      const baglam = projeBaglami(useStore.getState(), { soru: 'hakediş ödeme taşeron metraj sözleşme imalat', ek });
       const r = await fetch('/api/ai/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ baglam, mesajlar: [{ role: 'user', icerik: 'Bu hakediş tablosunu değerlendir: 1) Hangi taşerona ne kadar ödeme borcu var (öncelik sırası), 2) Fazla/erken ödeme yapılmış taşeron var mı (risk), 3) Nakit planlaması için öneri. Sadece verilen tabloya dayan, uydurma. Kısa, madde madde Türkçe.' }] }),

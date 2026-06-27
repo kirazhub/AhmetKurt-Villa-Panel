@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   BookOpenText, Search, ListChecks, AlertTriangle, FileText, Wallet, XCircle, Lightbulb,
   Compass, Stamp, FileSignature, Rocket, Mountain, Layers, Building, Home, Blocks, Cable,
@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { PageHeader, Card, CardBody, Badge, Input, Button } from '../components/ui';
 import { useStore } from '../store/useStore';
+import { projeBaglami } from '../lib/aiBaglam';
 import { REHBER_GENEL, REHBER_FAZLAR, type RehberBolum } from '../data/rehber';
 
 const IKONLAR: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
@@ -68,6 +69,8 @@ export default function Rehber() {
 
   const rehberBrifing = useStore((s) => s.rehberBrifing);
   const brifingKaydet = useStore((s) => s.rehberBrifingKaydet);
+  const dosyalariYenile = useStore((s) => s.dosyalariYenile);
+  useEffect(() => { dosyalariYenile(); }, [dosyalariYenile]);
   const [brifingYukleniyor, setBrifingYukleniyor] = useState(false);
   const brifing = rehberBrifing[aktif.id];
 
@@ -76,7 +79,7 @@ export default function Rehber() {
     try {
       const r = await fetch('/api/ai/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ baglam: `Konu: ${aktif.baslik}`, mesajlar: [{ role: 'user', icerik: BRIFING_PROMPT(aktif.baslik) }] }),
+        body: JSON.stringify({ baglam: projeBaglami(useStore.getState(), { konu: aktif.baslik }), mesajlar: [{ role: 'user', icerik: BRIFING_PROMPT(aktif.baslik) }] }),
       });
       const d = await r.json();
       if (r.ok && d.cevap) brifingKaydet(aktif.id, d.cevap);

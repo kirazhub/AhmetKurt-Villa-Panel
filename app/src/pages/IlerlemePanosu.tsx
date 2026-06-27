@@ -1,16 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Activity, Loader2, RefreshCw, AlertTriangle, TrendingUp, Wallet, ListChecks, FileDown, Sparkles, CheckCircle2 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { PageHeader, Card, CardBody, Button, Badge } from '../components/ui';
 import { tl, bugun, tarih } from '../lib/format';
 import { toplamPlanlanan, toplamGerceklesen, genelIlerleme, fazOzet, gecikenler } from '../lib/calc';
 import { pdfUret } from '../lib/pdf';
+import { projeBaglami } from '../lib/aiBaglam';
 
 export default function IlerlemePanosu() {
-  const { proje, fazlar, isKalemleri, odemeler } = useStore();
+  const { fazlar, isKalemleri, odemeler, dosyalariYenile } = useStore();
   const [degerlendirme, setDegerlendirme] = useState('');
   const [yukleniyor, setYukleniyor] = useState(false);
   const [pdfYap, setPdfYap] = useState(false);
+  useEffect(() => { dosyalariYenile(); }, [dosyalariYenile]);
 
   const plan = toplamPlanlanan(isKalemleri);
   const ger = toplamGerceklesen(isKalemleri);
@@ -21,22 +23,13 @@ export default function IlerlemePanosu() {
 
   const fazlarOzet = fazlar.map((f) => ({ faz: f, oz: fazOzet(isKalemleri.filter((k) => k.fazId === f.id)) })).filter((x) => x.oz.toplam > 0);
 
-  const baglamKur = () => {
-    const fazStr = fazlarOzet.map((x) => `- ${x.faz.ad}: %${Math.round(x.oz.ilerleme)} (${x.oz.tamamlanan}/${x.oz.toplam} iş)`).join('\n');
-    return `PROJE: ${proje.ad || 'Ahmet Kurt Villa'}
-GENEL İLERLEME: %${ilerleme} (${bitenIs}/${isKalemleri.length} iş tamamlandı)
-BÜTÇE: planlanan ${tl(plan)}, gerçekleşen ${tl(ger)}, ödenen ${tl(odenen)}
-GECİKEN İŞLER: ${geciken.length ? geciken.map((g) => g.ad).join(', ') : 'yok'}
-FAZ DURUMLARI:\n${fazStr || '(iş kalemi girilmemiş)'}`;
-  };
-
   const degerlendir = async () => {
     setYukleniyor(true);
     try {
       const r = await fetch('/api/ai/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          baglam: baglamKur(),
+          baglam: projeBaglami(useStore.getState(), { soru: 'ilerleme faz kapsam imalat sıradaki aşama' }),
           mesajlar: [{ role: 'user', icerik: 'Yukarıdaki ilerleme verisine göre bir İLERLEME DEĞERLENDİRME RAPORU yaz: 1) Genel durum özeti, 2) Hangi fazdayız ve sıradaki kritik adım, 3) Geciken/risk taşıyan işler ve ne yapılmalı, 4) Bütçe-ilerleme uyumu (sapma var mı), 5) Bu hafta odaklanılacak 3 madde. Sadece panel verisine dayan, uydurma. Net, madde madde Türkçe.' }],
         }),
       });

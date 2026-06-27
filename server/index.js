@@ -87,6 +87,40 @@ ${baglam || '(panel verisi gönderilmedi)'}
 Yukarıdaki anlık duruma göre, ilgili olduğunda somut atıf yap (örn. geciken iş, bütçe aşımı, sıradaki faz).`;
 }
 
+// ============================================================================
+// AI MASRAF SAYACI — token × tahmini birim fiyat. (Gerçek fatura değil, TAHMİN.)
+// Her AI çağrısında usage yakalanır, veri/maliyet.json'da birikir.
+// ============================================================================
+// USD / 1M token (giriş, çıkış) — OpenRouter yaklaşık fiyatları
+const FIYAT = [
+  { e: /opus/i, in: 15, out: 75 },
+  { e: /sonnet/i, in: 3, out: 15 },
+  { e: /gemini.*flash/i, in: 0.3, out: 2.5 },
+  { e: /gemini/i, in: 1.25, out: 10 },
+  { e: /gpt-4o|gpt-4\.1/i, in: 2.5, out: 10 },
+];
+function fiyatBul(model) { return FIYAT.find((x) => x.e.test(model || '')) || { in: 5, out: 15 }; }
+function maliyetEkle(model, usage) {
+  try {
+    if (!usage) return;
+    const pin = Number(usage.prompt_tokens || usage.input_tokens || 0);
+    const pout = Number(usage.completion_tokens || usage.output_tokens || 0);
+    if (!pin && !pout) return;
+    const f = fiyatBul(model);
+    const usd = (pin / 1e6) * f.in + (pout / 1e6) * f.out;
+    const m = oku('maliyet.json', { baslangic: new Date().toISOString(), toplamUsd: 0, promptTokens: 0, completionTokens: 0, cagri: 0, modeller: {} });
+    m.toplamUsd = (m.toplamUsd || 0) + usd;
+    m.promptTokens = (m.promptTokens || 0) + pin;
+    m.completionTokens = (m.completionTokens || 0) + pout;
+    m.cagri = (m.cagri || 0) + 1;
+    m.son = new Date().toISOString();
+    const mk = m.modeller[model] || { usd: 0, prompt: 0, completion: 0, cagri: 0 };
+    mk.usd += usd; mk.prompt += pin; mk.completion += pout; mk.cagri += 1;
+    m.modeller[model] = mk;
+    yaz('maliyet.json', m);
+  } catch (e) { console.error('maliyet', e); }
+}
+
 // OpenAI-uyumlu çağrı (OpenRouter)
 async function claude(systemMetin, mesajlar, maxTokens) {
   const model = await modelSec();
@@ -104,6 +138,7 @@ async function claude(systemMetin, mesajlar, maxTokens) {
   });
   const d = await r.json();
   if (!r.ok) throw { status: r.status, detay: d };
+  maliyetEkle(model, d.usage);
   const metin = d.choices?.[0]?.message?.content?.trim() || '';
   return { metin, model };
 }
@@ -133,6 +168,7 @@ async function claudeVision(systemMetin, metin, gorselUrl, maxTokens) {
   });
   const d = await r.json();
   if (!r.ok) throw { status: r.status, detay: d };
+  maliyetEkle(model, d.usage);
   return { metin: d.choices?.[0]?.message?.content?.trim() || '', model };
 }
 
@@ -546,6 +582,99 @@ const oku = (dosya, varsayilan) => { try { return JSON.parse(readFileSync(join(V
 const yaz = (dosya, veri) => { try { writeFileSync(join(VERI, dosya), JSON.stringify(veri, null, 2)); } catch (e) { console.error('yaz hata', e); } };
 
 // ============================================================================
+// AI MASRAF SAYACI — birikmiş tahmini maliyet
+// ============================================================================
+app.get('/api/ai/maliyet', (_q, res) => {
+  const m = oku('maliyet.json', { baslangic: null, toplamUsd: 0, promptTokens: 0, completionTokens: 0, cagri: 0, modeller: {} });
+  res.json(m);
+});
+
+// ============================================================================
+// EĞİTİM ARŞİVİ — İnşaat Okulu dersleri + Acımasız Danışman kayıtları (kalıcı)
+// tur: 'okul' | 'acimasiz'
+// ============================================================================
+const egitimOku = () => oku('egitim.json', []);
+const egitimYaz = (a) => yaz('egitim.json', a.slice(0, 500));
+app.post('/api/egitim/yukle', (req, res) => {
+  try {
+    const { tur = 'okul', baslik = '', icerik = '', test = null, ekstra = {} } = req.body || {};
+    if (!baslik && !icerik) return res.status(400).json({ hata: 'boş' });
+    const id = 'eg-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
+    const k = { id, tur, baslik: String(baslik).slice(0, 160), icerik, test: test || null, ekstra: ekstra || {}, tarih: new Date().toISOString() };
+    const arr = egitimOku(); arr.unshift(k); egitimYaz(arr);
+    res.json({ ok: true, ...k });
+  } catch (e) { res.status(500).json({ hata: String(e?.message || e) }); }
+});
+app.get('/api/egitim/liste', (req, res) => {
+  let arr = egitimOku();
+  if (req.query.tur) arr = arr.filter((x) => x.tur === req.query.tur);
+  res.json({ kayitlar: arr });
+});
+app.post('/api/egitim/sil', (req, res) => { const { id } = req.body || {}; let a = egitimOku(); a = a.filter((x) => x.id !== id); egitimYaz(a); res.json({ ok: true }); });
+
+// --- İNŞAAT OKULU: sıralı müfredattan SONRAKİ dersi üret (anlatım + püf + hata + tuzak + mini test) ---
+app.post('/api/ai/ders-uret', async (req, res) => {
+  if (!yapilandirilmis()) return res.status(503).json({ hata: 'OpenRouter API anahtarı tanımlı değil (.env).' });
+  try {
+    const { baglam = '', oncekiBasliklar = [], dersNo = 1 } = req.body || {};
+    const onceki = Array.isArray(oncekiBasliklar) && oncekiBasliklar.length
+      ? oncekiBasliklar.map((b, i) => `${i + 1}. ${b}`).join('\n')
+      : '(henüz ders işlenmedi — bu İLK ders)';
+    const sys = `Sen Türkiye'de villa/konut inşaatını A'dan Z'ye bilen, SABIRLI bir usta öğretmensin. Karşında inşaattan HİÇ anlamayan ama kendi villasını yaptıran bir mal sahibi var. Ona bir İNŞAAT OKULU müfredatı veriyorsun: en baştan (arsa/imar/ruhsat/zemin etüdü → hafriyat/istinat → temel → kaba yapı → çatı → duvarlar → kaba tesisat → sıva/şap/mantolama → doğrama → ince işler → cephe/taş → mekanik-elektrik → mutfak/banyo → havuz → peyzaj → iskan) MANTIKLI SIRAYLA ilerleyen dersler.
+
+KURALLAR:
+- Daha önce işlenen başlıkları TEKRAR ETME; sıradaki mantıklı KONUYU seç.
+- Acemiye göre anlat: her teknik terimi parantezle Türkçe açıkla. Sıcak, net, somut.
+- DÜRÜST ol: uydurma rakam verme; piyasa fiyatı gerektiğinde "şu an X firmadan teklif al, kabaca şu aralıktadır" de.
+- Bu projeye özel ipuçları ver (eğimli arsa, radye temel, lüks villa).
+- Kusursuz Türkçe. Markdown: **kalın** başlıklar, kısa maddeler.
+- Çıktın SADECE şu JSON olsun (başka hiçbir şey yazma):
+{
+  "konu": "Bu dersin kısa başlığı",
+  "seviye": "Başlangıç|Orta|İleri",
+  "icerik": "Markdown ders metni. Şu bölümleri MUTLAKA içersin:\\n**Bu derste ne öğreneceğiz**\\n**Detaylı anlatım** (acemiye uygun, adım adım)\\n**Püf noktaları** (3-5 madde)\\n**Sık yapılan hatalar** (3-5 madde)\\n**Nasıl kandırılırsın / nelere dikkat** (taşeron/malzeme/fiyat tuzakları, 3-5 madde)\\n**Maliyet & tasarruf** (bu konuda paranı nasıl korursun)",
+  "test": [
+    {"soru":"...","secenekler":["A şıkkı","B şıkkı","C şıkkı","D şıkkı"],"dogruIndex":0,"aciklama":"Neden doğru, kısa"}
+  ]
+}
+test 3-4 soru olsun, gerçek hayatta işine yarayacak, kandırılmayı önleyen sorular.`;
+    const istem = `PROJE BAĞLAMI:\n${baglam || '(panel verisi gönderilmedi)'}\n\nŞU ANA KADAR İŞLENEN DERSLER:\n${onceki}\n\nBu ${dersNo}. ders. Yukarıdaki sıraya göre SONRAKİ dersi üret. SADECE JSON döndür.`;
+    const { metin, model } = await claude(sys, [{ role: 'user', icerik: istem }], 4000);
+    const veri = jsonAyikla(metin);
+    if (!veri || !veri.icerik) return res.json({ ders: { konu: 'Ders', seviye: 'Başlangıç', icerik: metin, test: [] }, model });
+    res.json({ ders: veri, model });
+  } catch (e) {
+    res.status(e.status || 500).json({ hata: 'Ders üretilemedi', detay: e.detay || String(e?.message || e) });
+  }
+});
+
+// --- ACIMASIZ DANIŞMAN: yağcılık yok, sert ve dürüst; gerçek proje durumuna göre ---
+app.post('/api/ai/acimasiz', async (req, res) => {
+  if (!yapilandirilmis()) return res.status(503).json({ hata: 'OpenRouter API anahtarı tanımlı değil (.env).' });
+  try {
+    const { baglam = '', soru = '' } = req.body || {};
+    const sys = `Sen ACIMASIZ ama DÜRÜST bir inşaat danışmanısın — 30 yıllık şantiye kurdu gibisin. Karşındaki mal sahibine YAĞ ÇEKMEZSİN, gerçeği yüzüne söylersin. Amacın onu PARA, ZAMAN ve KALİTE kaybından korumak; gerekirse sert konuşursun ama asla hakaret etmezsin.
+
+NASIL KONUŞURSUN:
+- Net, sert, doğrudan. "Bunu yaparsan kazık yersin." gibi açık uyarılar.
+- HIRSIZLIK/KANDIRILMA risklerini somut anlat: taşeronun nasıl fazla metraj yazar, malzemede nasıl aşırma olur, hangi ödeme tuzakları var, fatura/hakediş oyunları.
+- Mal sahibinin YAPTIĞI/YAPACAĞI HATALARI çekinmeden söyle.
+- İNSAN YÖNETİMİ: taşeron/usta/işçi nasıl yönetilir, nerede sıkı durulur, nerede güven verilir.
+- Panelin GERÇEK durumuna dayan (geciken iş, ödeme, eksik pafta, bütçe). Veri yoksa "şu veriyi girmeden seni doğru uyaramam" de — uydurma.
+- Her uyarıyı SOMUT EYLEME bağla ("şunu şu kişiden iste", "şu kontrolü bugün yap").
+- Kusursuz Türkçe, madde madde. Sonunda "EN ACİL 3 ŞEY" başlığıyla kapat.`;
+    const talep = soru && String(soru).trim()
+      ? String(soru)
+      : 'Projemin şu anki gerçek durumuna acımasızca bak. Nerede kazık yiyorum, nerede hata yapıyorum, taşeron/malzeme/ödeme tarafında hangi hırsızlık-kandırılma riskleri var, insanları nasıl yönetmeliyim? Çekinme, gerçeği söyle.';
+    const { metin, model } = await claude(sys, [{ role: 'user', icerik: `PROJE DURUMU:\n${baglam}\n\nTALEP: ${talep}` }], 2200);
+    res.json({ cevap: metin, model });
+  } catch (e) {
+    res.status(e.status || 500).json({ hata: 'Acımasız danışman yanıt veremedi', detay: e.detay || String(e?.message || e) });
+  }
+});
+
+
+// ============================================================================
 // WhatsApp TOPLU GÖNDERİM KUYRUĞU (arka planda, banlanmamak için aralıklı)
 // Kullanıcı 1 kez başlatır; sunucu sıradakini kendi gönderir (tarayıcı kapansa da).
 // Aralık + her seferinde RASTGELE sapma (sabit aralık da ban sebebidir).
@@ -725,6 +854,7 @@ async function claudeWeb(systemMetin, soru, maxTokens) {
   });
   const d = await r.json();
   if (!r.ok) throw { status: r.status, detay: d };
+  maliyetEkle(model, d.usage);
   const msg = d.choices?.[0]?.message || {};
   const metin = (msg.content || '').trim();
   const kaynaklar = [];

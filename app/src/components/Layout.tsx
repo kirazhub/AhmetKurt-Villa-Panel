@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, ListChecks, HardHat, Wallet, Receipt,
@@ -72,6 +72,30 @@ function Marka() {
   );
 }
 
+// Birikmiş AI masrafı (tahmini) — token × birim fiyat. Her sayfada görünür.
+function MaliyetRozeti({ mobil }: { mobil?: boolean }) {
+  const [usd, setUsd] = useState<number | null>(null);
+  const [cagri, setCagri] = useState(0);
+  useEffect(() => {
+    const f = () => fetch('/api/ai/maliyet').then((r) => r.json()).then((d) => { setUsd(d.toplamUsd ?? 0); setCagri(d.cagri ?? 0); }).catch(() => {});
+    f();
+    const t = setInterval(f, 30000);
+    return () => clearInterval(t);
+  }, []);
+  if (usd === null) return null;
+  return (
+    <span
+      title={`Tahmini toplam AI masrafı — ${cagri} çağrı (token × birim fiyat; gerçek fatura değildir)`}
+      className={clsx(
+        'inline-flex items-center gap-1.5 rounded-lg font-semibold whitespace-nowrap',
+        mobil ? 'text-xs px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200' : 'text-xs px-2.5 py-1.5 bg-amber-500/15 text-amber-300 border border-amber-500/20',
+      )}
+    >
+      <Coins size={mobil ? 13 : 14} /> AI Masrafı ~${usd.toFixed(2)}
+    </span>
+  );
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const [mobilAcik, setMobilAcik] = useState(false);
   const proje = useStore((s) => s.proje);
@@ -83,6 +107,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {/* Masaüstü yan menü */}
       <aside className="hidden lg:flex w-64 shrink-0 flex-col bg-slate-900 sticky top-0 h-screen">
         <Marka />
+        <div className="px-5 pb-3 -mt-2"><MaliyetRozeti /></div>
         <NavItems />
         <div className="mt-auto p-4 text-xs text-slate-400 border-t border-white/5 shrink-0">
           Ruhsat No {proje.ruhsatNo} · {proje.yapiSinifi}
@@ -108,6 +133,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <header className="lg:hidden sticky top-0 z-30 bg-white border-b border-cizgi flex items-center gap-3 px-4 h-14">
           <button onClick={() => setMobilAcik(true)} className="p-2 -ml-2 text-metin"><Menu size={22} /></button>
           <span className="font-semibold text-metin">{aktif?.ad ?? 'Panel'}</span>
+          <span className="ml-auto"><MaliyetRozeti mobil /></span>
         </header>
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1400px] w-full mx-auto">{children}</main>
       </div>

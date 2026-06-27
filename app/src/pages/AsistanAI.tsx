@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, Send, Loader2, Sparkles, AlertTriangle, KeyRound, RefreshCw, FileDown, Download, Trash2, FileText, MessageSquareText, ChevronDown, ChevronUp } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { PageHeader, Card, CardBody, Button, Badge } from '../components/ui';
-import { tl, bugun, tarih } from '../lib/format';
+import { tarih } from '../lib/format';
 import { pdfUret, raporListe, raporSil, raporUrl, type RaporMeta } from '../lib/pdf';
-import { toplamPlanlanan, toplamGerceklesen, genelIlerleme, fazOzet, gecikenler } from '../lib/calc';
+import { projeBaglami } from '../lib/aiBaglam';
 
 interface Mesaj { role: 'user' | 'assistant'; icerik: string; }
 
@@ -18,57 +18,6 @@ const HIZLI = [
   'Bütçem nasıl gidiyor, bütçe aşımı riski var mı?',
   'Önümüzdeki fazda nelere dikkat etmeliyim?',
 ];
-
-// AI'ya gönderilecek anlık panel özeti + AKILLI belge/spec seçimi
-function baglamKur(s: ReturnType<typeof useStore.getState>, soru?: string): string {
-  const { proje, fazlar, isKalemleri, taseronlar, odemeler, dersler, sunucuDosyalar, projeAnaliz } = s;
-  const plan = toplamPlanlanan(isKalemleri);
-  const ger = toplamGerceklesen(isKalemleri);
-  const ilerleme = Math.round(genelIlerleme(isKalemleri));
-  const geciken = gecikenler(isKalemleri, bugun());
-  const fazSatir = fazlar.map((f) => {
-    const oz = fazOzet(isKalemleri.filter((k) => k.fazId === f.id));
-    return `  - ${f.ad}: %${Math.round(oz.ilerleme)} (${oz.tamamlanan}/${oz.toplam} iş bitti)`;
-  }).join('\n');
-  const dersSatir = dersler.length
-    ? dersler.slice(-15).map((d) => `  - [${d.tur}] ${d.baslik}: ${d.icerik}`).join('\n')
-    : '  (henüz ders yok)';
-
-  // Analiz edilmiş belgeler
-  const specli = sunucuDosyalar.filter((d) => d.spec);
-  const belgeBaslik = specli.length
-    ? specli.map((d) => `  - ${d.ad}: ${(d.spec || '').split('\n')[0].replace(/^Belge türü:\s*/i, '').slice(0, 80)}`).join('\n')
-    : '  (henüz analiz edilmiş belge yok)';
-  const analizMetni = projeAnaliz?.metin ? `\nPROJE GENELİ ANALİZ (bütünleşik):\n${projeAnaliz.metin.slice(0, 8000)}` : '';
-
-  // AKILLI SEÇİM: sorudaki kelimelere göre ilgili paftaların TAM spec'i
-  let ilgili = '';
-  if (soru) {
-    const kelimeler = soru.toLowerCase().split(/[^a-zçğıöşü0-9]+/).filter((k) => k.length >= 4);
-    const eslesen = specli.filter((d) => {
-      const metin = ((d.spec || '') + ' ' + (d.ad || '')).toLowerCase();
-      return kelimeler.some((k) => metin.includes(k));
-    }).slice(0, 30);
-    if (eslesen.length) {
-      ilgili = `\n\nSORUYLA İLGİLİ PAFTALARIN TAM TEKNİK ANALİZİ — CEVABINI KESİNLİKLE BUNLARDAN VER, uydurma; rakam/ölçü/adet bunlarda yoksa "ilgili paftada bu bilgi yok" de:\n` +
-        eslesen.map((d) => `### ${d.ad}\n${(d.spec || '').slice(0, 2800)}`).join('\n\n');
-    }
-  }
-
-  return `PROJE: ${proje.ad} — ${proje.konum}
-GENEL İLERLEME: %${ilerleme}
-BÜTÇE: planlanan ${tl(plan)}, gerçekleşen ${tl(ger)}, fark ${tl(plan - ger)}
-TAŞERON SAYISI: ${taseronlar.length}
-TOPLAM ÖDENEN: ${tl(odemeler.reduce((t, o) => t + o.tutar, 0))}
-GECİKEN İŞ: ${geciken.length ? geciken.map((g) => g.ad).join(', ') : 'yok'}
-FAZ DURUMLARI:
-${fazSatir}
-ÖĞRENİLEN DERSLER (hatırla ve kararlarında kullan):
-${dersSatir}
-
-YÜKLÜ VE ANALİZ EDİLMİŞ PAFTALAR (${specli.length} adet — mimari, statik, tesisat, elektrik):
-${belgeBaslik}${analizMetni}${ilgili}`;
-}
 
 // AI metnini basitçe biçimle (kalın **..** ve satırlar)
 function Bicimli({ metin }: { metin: string }) {
@@ -141,7 +90,7 @@ export default function AsistanAI() {
   const analizGetir = async () => {
     setAnalizYukleniyor(true);
     try {
-      const baglam = baglamKur(useStore.getState());
+      const baglam = projeBaglami(useStore.getState());
       const r = await fetch('/api/ai/analiz', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ baglam }) });
       const d = await r.json();
       setAnaliz(r.ok ? d.analiz : '');
@@ -159,7 +108,7 @@ export default function AsistanAI() {
     setGirdi('');
     setYukleniyor(true);
     try {
-      const baglam = baglamKur(useStore.getState(), soru);
+      const baglam = projeBaglami(useStore.getState(), { soru });
       const r = await fetch('/api/ai/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mesajlar: yeni, baglam }),

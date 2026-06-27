@@ -52,7 +52,7 @@ export default function Specler() {
       const specler = specli.map((d) => `## ${d.ad}\n${d.spec}`).join('\n\n');
       const r = await fetch('/api/ai/proje-analiz', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ specler, proje: JSON.stringify(proje) }) });
       const d = await r.json();
-      if (r.ok && d.analiz) projeAnalizKaydet({ metin: d.analiz, tarih: new Date().toISOString() });
+      if (r.ok && d.analiz) projeAnalizKaydet({ metin: d.analiz, tarih: new Date().toISOString(), belgeSayisi: specli.length });
       else alert('Analiz çıkarılamadı: ' + (d.hata || ''));
     } catch { alert('Bağlantı hatası'); }
     setAnalizYukleniyor(false);

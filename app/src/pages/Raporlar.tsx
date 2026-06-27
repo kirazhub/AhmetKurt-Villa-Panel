@@ -3,8 +3,8 @@ import { FileText, CalendarCheck, CalendarClock, AlertTriangle, Wallet, Loader2,
 import { useStore } from '../store/useStore';
 import { PageHeader, Card, CardBody, Button } from '../components/ui';
 import { tl, tarih, bugun, sayi } from '../lib/format';
-import { toplamPlanlanan, toplamGerceklesen, genelIlerleme, fazOzet, gecikenler, taseronOdemeToplam, kalemPlanlanan } from '../lib/calc';
 import { BIRIM_ETIKET } from '../types';
+import { projeBaglami } from '../lib/aiBaglam';
 
 type RaporTur = 'gunluk' | 'haftalik' | 'geciken' | 'maliyet' | 'performans';
 
@@ -35,15 +35,11 @@ export default function Raporlar() {
   const [hazir, setHazir] = useState<boolean | null>(null);
   const [baslik, setBaslik] = useState('');
 
-  useEffect(() => { fetch('/api/ai/health').then((r) => r.json()).then((d) => setHazir(!!d.yapilandirilmis)).catch(() => setHazir(false)); }, []);
+  useEffect(() => { fetch('/api/ai/health').then((r) => r.json()).then((d) => setHazir(!!d.yapilandirilmis)).catch(() => setHazir(false)); s.dosyalariYenile(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
-  const baglamKur = () => {
-    const plan = toplamPlanlanan(s.isKalemleri), ger = toplamGerceklesen(s.isKalemleri);
-    const geciken = gecikenler(s.isKalemleri, bugun());
-    const fazSatir = s.fazlar.map((f) => {
-      const oz = fazOzet(s.isKalemleri.filter((k) => k.fazId === f.id));
-      return `  - ${f.ad}: %${Math.round(oz.ilerleme)} (${oz.tamamlanan}/${oz.toplam})`;
-    }).join('\n');
+  // Motor: proje künyesi + ilerleme + faz + taşeron + dersler + tüm paftalar + analiz.
+  // Ek: rapora özel saha kayıtları + malzeme sarfiyatı.
+  const baglamKur = (konu?: string) => {
     const sahaSon = [...s.sahaGunlukleri].sort((a, b) => b.tarih.localeCompare(a.tarih)).slice(0, 10)
       .map((g) => `  - ${tarih(g.tarih)}: ${g.kamyon ?? 0} kamyon, ${g.isci ?? 0} işçi, ${g.calismaSaati ?? '?'} saat, ${g.hava ?? ''}`).join('\n') || '  (kayıt yok)';
     const sarfToplam = s.sarfiyatlar.reduce((t, x) => t + (x.tutar || 0), 0);
@@ -52,30 +48,8 @@ export default function Raporlar() {
       s.sarfiyatlar.forEach((x) => { const e = m.get(x.malzeme) || { miktar: 0, tutar: 0, birim: BIRIM_ETIKET[x.birim] }; e.miktar += x.miktar; e.tutar += x.tutar || 0; m.set(x.malzeme, e); });
       return [...m.entries()].map(([ad, e]) => `  - ${ad}: ${sayi(e.miktar, 1)} ${e.birim}, ${tl(e.tutar)}`).join('\n') || '  (kayıt yok)';
     })();
-    const taseronSatir = s.taseronlar.map((t) => {
-      const isler = s.isKalemleri.filter((k) => k.taseronId === t.id);
-      const tamam = isler.filter((k) => k.durum === 'tamamlandi').length;
-      const gec = gecikenler(isler, bugun()).length;
-      const planT = isler.reduce((x, k) => x + kalemPlanlanan(k), 0);
-      const odenen = taseronOdemeToplam(s.odemeler, t.id);
-      return `  - ${t.ad}${t.firma ? ' (' + t.firma + ')' : ''} [${t.uzmanlik}]: ${isler.length} iş, ${tamam} bitti, ${gec} geciken, planlanan ${tl(planT)}, ödenen ${tl(odenen)}${t.performans ? ', not ' + t.performans + '/5' : ''}`;
-    }).join('\n') || '  (taşeron atanmamış)';
-    const dersSatir = s.dersler.length ? s.dersler.slice(-15).map((d) => `  - [${d.tur}] ${d.baslik}: ${d.icerik}`).join('\n') : '  (henüz ders yok)';
-    return `TARİH: ${tarih(bugun())}
-GENEL İLERLEME: %${Math.round(genelIlerleme(s.isKalemleri))}
-BÜTÇE: planlanan ${tl(plan)}, gerçekleşen ${tl(ger)}, fark ${tl(plan - ger)}
-GECİKEN İŞLER: ${geciken.length ? geciken.map((g) => g.ad).join(', ') : 'yok'}
-TAŞERON SAYISI: ${s.taseronlar.length} | TOPLAM ÖDENEN: ${tl(s.odemeler.reduce((t, o) => t + o.tutar, 0))}
-FAZ DURUMLARI:
-${fazSatir}
-TAŞERON / EKİP PERFORMANSI:
-${taseronSatir}
-SON SAHA KAYITLARI:
-${sahaSon}
-MALZEME SARFİYATI (toplam ${tl(sarfToplam)}):
-${malzemeOzet}
-ÖĞRENİLEN DERSLER (hatırla ve kullan):
-${dersSatir}`;
+    const ek = `SON SAHA KAYITLARI:\n${sahaSon}\nMALZEME SARFİYATI (toplam ${tl(sarfToplam)}):\n${malzemeOzet}`;
+    return projeBaglami(s, { konu, ek });
   };
 
   const uret = async (r: typeof RAPORLAR[number]) => {
@@ -83,7 +57,7 @@ ${dersSatir}`;
     try {
       const res = await fetch('/api/ai/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ baglam: baglamKur(), mesajlar: [{ role: 'user', icerik: r.talimat + ' Tüm rapor Türkçe, net ve maddeler halinde olsun. Başına kısa bir özet cümlesi koy.' }] }),
+        body: JSON.stringify({ baglam: baglamKur(r.ad), mesajlar: [{ role: 'user', icerik: r.talimat + ' Tüm rapor Türkçe, net ve maddeler halinde olsun. Başına kısa bir özet cümlesi koy.' }] }),
       });
       const d = await res.json();
       setMetin(res.ok ? d.cevap : `Rapor alınamadı: ${d.hata || ''}`);

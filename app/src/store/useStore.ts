@@ -32,7 +32,7 @@ interface State {
   rehberBrifing: Record<string, string>; // rehber bölüm id -> AI brifing metni (önbellek)
   maliyetRaporu: MaliyetRaporu | null; // AI'nın ürettiği 3 senaryolu maliyet raporu
   sunucuDosyalar: SunucuDosya[]; // sunucu görsel deposu listesi (cache; sunucudan gelir)
-  projeAnaliz: { metin: string; tarih: string } | null;
+  projeAnaliz: { metin: string; tarih: string; belgeSayisi?: number } | null;
   harcamalar: Harcama[];
   kaliteDurum: Record<string, boolean>; // 'fazId::madde' -> işaretli
   usdKur: number | null;   // güncel 1 USD = ? TL
@@ -66,7 +66,7 @@ interface State {
 
   // Maliyet raporu
   maliyetRaporuKaydet: (r: MaliyetRaporu | null) => void;
-  projeAnalizKaydet: (a: { metin: string; tarih: string } | null) => void;
+  projeAnalizKaydet: (a: { metin: string; tarih: string; belgeSayisi?: number } | null) => void;
   harcamaEkle: (h: Omit<Harcama, 'id'>) => string;
   harcamaSil: (id: string) => void;
   kaliteToggle: (anahtar: string) => void;

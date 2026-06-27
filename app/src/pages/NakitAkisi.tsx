@@ -1,16 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Banknote, Loader2, RefreshCw, FileDown, Sparkles, TrendingDown, Wallet, PieChart } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { PageHeader, Card, CardBody, Button } from '../components/ui';
 import { tl, usd } from '../lib/format';
 import { toplamPlanlanan } from '../lib/calc';
 import { pdfUret } from '../lib/pdf';
+import { projeBaglami } from '../lib/aiBaglam';
 
 export default function NakitAkisi() {
-  const { isKalemleri, odemeler, sarfiyatlar, harcamalar, maliyetRaporu, usdKur } = useStore();
+  const { isKalemleri, odemeler, sarfiyatlar, harcamalar, maliyetRaporu, usdKur, dosyalariYenile } = useStore();
   const [d, setD] = useState('');
   const [yuk, setYuk] = useState(false);
   const [pdfYap, setPdfYap] = useState(false);
+  useEffect(() => { dosyalariYenile(); }, [dosyalariYenile]);
 
   // Planlanan bütçe: maliyet raporu (orta) varsa onu, yoksa iş kalemleri planlanan toplamı
   const planlanan = maliyetRaporu?.senaryolar?.orta || toplamPlanlanan(isKalemleri) || 0;
@@ -31,7 +33,8 @@ export default function NakitAkisi() {
   const degerlendir = async () => {
     setYuk(true);
     try {
-      const baglam = `NAKİT AKIŞI / BÜTÇE:\nPlanlanan bütçe: ${tl(planlanan)}\nGerçek harcama: ${tl(gercek)} (ödemeler ${tl(odemeT)} + malzeme ${tl(sarfT)} + faturalar ${tl(harcamaT)})\nKalan bütçe: ${tl(kalan)} (kullanım %${yuzde})\nKategori dağılımı: ${katListe.map(([k, v]) => `${k} ${tl(v)}`).join(', ') || 'yok'}`;
+      const ek = `NAKİT AKIŞI / BÜTÇE:\nPlanlanan bütçe: ${tl(planlanan)}\nGerçek harcama: ${tl(gercek)} (ödemeler ${tl(odemeT)} + malzeme ${tl(sarfT)} + faturalar ${tl(harcamaT)})\nKalan bütçe: ${tl(kalan)} (kullanım %${yuzde})\nKategori dağılımı: ${katListe.map(([k, v]) => `${k} ${tl(v)}`).join(', ') || 'yok'}`;
+      const baglam = projeBaglami(useStore.getState(), { soru: 'bütçe maliyet nakit harcama tasarruf malzeme', ek });
       const r = await fetch('/api/ai/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ baglam, mesajlar: [{ role: 'user', icerik: 'Bu nakit akışı/bütçe durumunu değerlendir: 1) Bütçe aşımı/risk var mı, 2) En çok harcanan kalemler ve uyarı, 3) Kalan bütçeyle proje biter mi tahmini, 4) Tasarruf önerileri. Sadece verilen rakamlara dayan, uydurma. Kısa, madde madde Türkçe.' }] }) });
       const j = await r.json();
       setD(r.ok ? j.cevap : 'Alınamadı: ' + (j.hata || ''));

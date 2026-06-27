@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Sparkles, Loader2, RefreshCw, CheckCircle2, Circle, MinusCircle, Upload, KeyRound, Plus, Trash2, AlertTriangle } from 'lucide-react';
 import { useStore } from '../store/useStore';
+import { projeBaglami } from '../lib/aiBaglam';
 import { PageHeader, Card, CardBody, Button, Badge, ProgressBar, Field, Input, Select, Textarea, Modal } from '../components/ui';
 import { ISTEK_KATEGORILERI, type IstekDurum } from '../types';
 
@@ -37,13 +38,13 @@ const DURUM_SECENEK: { d: IstekDurum; ad: string; ikon: React.ReactNode; cls: st
 ];
 
 export default function IstekListesi() {
-  const { istekListesi, istekBrifing, istekGuncelle, istekEkle, istekSil, istekBrifingKaydet } = useStore();
+  const { istekListesi, istekBrifing, istekGuncelle, istekEkle, istekSil, istekBrifingKaydet, dosyalariYenile } = useStore();
   const [yukleniyor, setYukleniyor] = useState(false);
   const [hazir, setHazir] = useState<boolean | null>(null);
   const [ekleModal, setEkleModal] = useState(false);
   const [yeni, setYeni] = useState({ kategori: ISTEK_KATEGORILERI[0] as string, baslik: '', aciklama: '' });
 
-  useEffect(() => { fetch('/api/ai/health').then((r) => r.json()).then((d) => setHazir(!!d.yapilandirilmis)).catch(() => setHazir(false)); }, []);
+  useEffect(() => { fetch('/api/ai/health').then((r) => r.json()).then((d) => setHazir(!!d.yapilandirilmis)).catch(() => setHazir(false)); dosyalariYenile(); }, [dosyalariYenile]);
 
   const ozet = useMemo(() => {
     const zorunlu = istekListesi.filter((x) => x.zorunlu);
@@ -56,7 +57,7 @@ export default function IstekListesi() {
   const brifingUret = async () => {
     setYukleniyor(true);
     try {
-      const r = await fetch('/api/ai/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ baglam: 'İstek dosyası talebi', mesajlar: [{ role: 'user', icerik: ISTEK_PROMPT }] }) });
+      const r = await fetch('/api/ai/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ baglam: projeBaglami(useStore.getState(), { soru: 'eksik belge pafta proje statik tesisat elektrik ruhsat' }), mesajlar: [{ role: 'user', icerik: ISTEK_PROMPT }] }) });
       const d = await r.json();
       istekBrifingKaydet(r.ok && d.cevap ? d.cevap : `Alınamadı: ${d.hata || 'AI bağlantısı yok'}`);
     } catch { istekBrifingKaydet('Bağlanılamadı. AI sunucusu çalışıyor mu?'); }
