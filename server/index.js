@@ -34,7 +34,9 @@ app.use(express.json({ limit: '60mb' }));
 // --- Basit şifre koruması (uygulama seviyesi; tarayıcı fetch ile sorunsuz) ---
 const VILLA_SIFRE = process.env.VILLA_SIFRE || '123456';
 app.use('/api', (req, res, next) => {
-  if ((req.headers['x-villa-sifre'] || '') === VILLA_SIFRE) return next();
+  // Header (fetch) veya query param (img src ile görsel yükleme) ile şifre kabul edilir
+  const s = req.headers['x-villa-sifre'] || req.query.s || '';
+  if (s === VILLA_SIFRE) return next();
   return res.status(401).json({ hata: 'Yetkisiz — şifre gerekli' });
 });
 
@@ -315,6 +317,74 @@ app.post('/api/ai/analiz', async (req, res) => {
 // ============================================================================
 const VERI = join(__dirname, 'veri');
 if (!existsSync(VERI)) mkdirSync(VERI, { recursive: true });
+
+// ============================================================================
+// SUNUCU GÖRSEL DEPOSU — planlar + drone görselleri sunucuda kalıcı saklanır
+// (orijinal + küçük önizleme). Her cihazdan erişilir, yedeklenir.
+// ============================================================================
+const GORSEL_DIR = join(VERI, 'gorseller');
+const ONIZLEME_DIR = join(VERI, 'onizleme');
+if (!existsSync(GORSEL_DIR)) mkdirSync(GORSEL_DIR, { recursive: true });
+if (!existsSync(ONIZLEME_DIR)) mkdirSync(ONIZLEME_DIR, { recursive: true });
+const dosyalarOku = () => { try { return JSON.parse(readFileSync(join(VERI, 'dosyalar.json'), 'utf8')); } catch { return []; } };
+const dosyalarYaz = (a) => { try { writeFileSync(join(VERI, 'dosyalar.json'), JSON.stringify(a, null, 2)); } catch (e) { console.error('dosyalar yaz', e); } };
+const dataUrlBuf = (d) => { try { const b64 = String(d).split(',').pop(); return Buffer.from(b64, 'base64'); } catch { return null; } };
+const guvId = (s) => String(s).replace(/[^a-z0-9-]/gi, '');
+
+// Görsel yükle (orijinal + önizleme dataURL olarak gelir)
+app.post('/api/dosya/yukle', (req, res) => {
+  try {
+    const { ad = 'gorsel.jpg', tur = 'foto', etiket = '', orijinal = '', onizleme = '', tarihCekim = '', meta = {} } = req.body || {};
+    const obuf = dataUrlBuf(orijinal);
+    if (!obuf || obuf.length < 50) return res.status(400).json({ hata: 'Geçerli görsel gelmedi' });
+    const id = 'g-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
+    writeFileSync(join(GORSEL_DIR, id + '.jpg'), obuf);
+    const kbuf = dataUrlBuf(onizleme) || obuf;
+    writeFileSync(join(ONIZLEME_DIR, id + '.jpg'), kbuf);
+    const kayit = { id, ad, tur, etiket, tarih: new Date().toISOString(), tarihCekim: tarihCekim || '', boyut: obuf.length, meta: meta || {} };
+    const arr = dosyalarOku(); arr.push(kayit); dosyalarYaz(arr);
+    res.json({ ok: true, ...kayit });
+  } catch (e) { res.status(500).json({ hata: 'Yüklenemedi', detay: String(e?.message || e) }); }
+});
+
+// Liste (opsiyonel ?tur=drone filtresi)
+app.get('/api/dosya/liste', (req, res) => {
+  let arr = dosyalarOku();
+  if (req.query.tur) arr = arr.filter((x) => x.tur === req.query.tur);
+  res.json({ dosyalar: arr });
+});
+
+// Tek kayıt meta güncelle (spec, etiket, tarihCekim vb.)
+app.post('/api/dosya/guncelle', (req, res) => {
+  const { id, patch = {} } = req.body || {};
+  const arr = dosyalarOku();
+  const i = arr.findIndex((x) => x.id === id);
+  if (i === -1) return res.status(404).json({ hata: 'Bulunamadı' });
+  arr[i] = { ...arr[i], ...patch };
+  dosyalarYaz(arr);
+  res.json({ ok: true, kayit: arr[i] });
+});
+
+// Sil
+app.post('/api/dosya/sil', (req, res) => {
+  const { id } = req.body || {};
+  let arr = dosyalarOku(); arr = arr.filter((x) => x.id !== id); dosyalarYaz(arr);
+  try { unlinkSync(join(GORSEL_DIR, guvId(id) + '.jpg')); } catch { /**/ }
+  try { unlinkSync(join(ONIZLEME_DIR, guvId(id) + '.jpg')); } catch { /**/ }
+  res.json({ ok: true });
+});
+
+// Görsel servis (img src ile; şifre query param ?s= ile gelir)
+app.get('/api/dosya/:id', (req, res) => {
+  const f = join(GORSEL_DIR, guvId(req.params.id) + '.jpg');
+  if (!existsSync(f)) return res.status(404).end();
+  res.type('image/jpeg').set('Cache-Control', 'private, max-age=86400').send(readFileSync(f));
+});
+app.get('/api/dosya/:id/k', (req, res) => {
+  const f = join(ONIZLEME_DIR, guvId(req.params.id) + '.jpg');
+  if (!existsSync(f)) return res.status(404).end();
+  res.type('image/jpeg').set('Cache-Control', 'private, max-age=86400').send(readFileSync(f));
+});
 
 // WhatsApp Web'i başlat (QR ile bağlanır)
 wa.baslat(VERI);
