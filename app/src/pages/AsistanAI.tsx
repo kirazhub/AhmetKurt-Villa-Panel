@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Send, Loader2, Sparkles, AlertTriangle, KeyRound, RefreshCw } from 'lucide-react';
+import { Bot, Send, Loader2, Sparkles, AlertTriangle, KeyRound, RefreshCw, FileDown, Download, Trash2, FileText } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { PageHeader, Card, CardBody, Button, Badge } from '../components/ui';
-import { tl, bugun } from '../lib/format';
+import { tl, bugun, tarih } from '../lib/format';
+import { pdfUret, raporListe, raporSil, raporUrl, type RaporMeta } from '../lib/pdf';
 import { toplamPlanlanan, toplamGerceklesen, genelIlerleme, fazOzet, gecikenler } from '../lib/calc';
 
 interface Mesaj { role: 'user' | 'assistant'; icerik: string; }
@@ -71,7 +72,24 @@ export default function AsistanAI() {
   const [analiz, setAnaliz] = useState<string>('');
   const [analizYukleniyor, setAnalizYukleniyor] = useState(false);
   const [hazir, setHazir] = useState<boolean | null>(null); // backend + key durumu
+  const [raporlar, setRaporlar] = useState<RaporMeta[]>([]);
+  const [pdfYap, setPdfYap] = useState<number | null>(null);
   const sonRef = useRef<HTMLDivElement>(null);
+
+  const raporlariYenile = () => raporListe().then(setRaporlar).catch(() => {});
+  useEffect(() => { raporlariYenile(); }, []);
+
+  const mesajPdf = async (i: number) => {
+    setPdfYap(i);
+    try {
+      const m = mesajlar[i];
+      const soru = i > 0 && mesajlar[i - 1].role === 'user' ? mesajlar[i - 1].icerik : '';
+      await pdfUret('AI Yanıtı — ' + new Date().toLocaleDateString('tr-TR'), (soru ? `Soru: ${soru}\n\n` : '') + m.icerik, 'asistan', soru.slice(0, 90));
+      await raporlariYenile();
+    } catch { alert('PDF oluşturulamadı.'); }
+    setPdfYap(null);
+  };
+  const raporuSil = async (id: string) => { if (!confirm('Bu PDF arşivden silinsin mi?')) return; await raporSil(id); raporlariYenile(); };
 
   useEffect(() => { sonRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [mesajlar, yukleniyor]);
 
@@ -185,6 +203,11 @@ export default function AsistanAI() {
                 {m.role === 'assistant' && <div className="p-2 rounded-xl bg-marka-50 text-marka-600 h-fit shrink-0"><Bot size={18} /></div>}
                 <div className={`rounded-2xl px-4 py-2.5 max-w-[80%] ${m.role === 'user' ? 'bg-marka-500 text-white' : 'bg-zemin text-metin'}`}>
                   {m.role === 'assistant' ? <Bicimli metin={m.icerik} /> : <span className="whitespace-pre-wrap">{m.icerik}</span>}
+                  {m.role === 'assistant' && (
+                    <button onClick={() => mesajPdf(i)} disabled={pdfYap === i} className="mt-2 inline-flex items-center gap-1.5 text-xs text-marka-600 hover:text-marka-700 cursor-pointer">
+                      {pdfYap === i ? <Loader2 size={12} className="animate-spin" /> : <FileDown size={12} />} PDF indir
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -220,6 +243,29 @@ export default function AsistanAI() {
       <p className="mt-4 text-xs text-metin-yum flex items-center gap-1.5">
         <AlertTriangle size={13} /> Asistan yardımcıdır, danışmanlık verir; kritik kararlarda şantiye şefin ve yapı denetimle de teyit et.
       </p>
+
+      {/* PDF Arşivi */}
+      <Card className="mt-5"><CardBody>
+        <div className="flex items-center justify-between mb-3">
+          <p className="font-semibold text-metin flex items-center gap-2"><FileText size={16} className="text-marka-500" /> PDF Arşivi <span className="text-xs font-normal text-metin-yum">(sunucuda, her cihazdan indir)</span></p>
+          <Button variant="ghost" size="sm" onClick={raporlariYenile}><RefreshCw size={14} /></Button>
+        </div>
+        {raporlar.length === 0 ? (
+          <p className="text-sm text-metin-yum">Henüz PDF yok. Bir AI yanıtının altındaki <b>"PDF indir"</b> ile oluşturduğun belgeler burada birikir.</p>
+        ) : (
+          <div className="divide-y divide-cizgi">
+            {raporlar.map((r) => (
+              <div key={r.id} className="py-2.5 flex items-center justify-between gap-3">
+                <div className="min-w-0"><p className="font-medium text-metin text-sm truncate">{r.ad}</p><p className="text-xs text-metin-yum">{tarih(r.tarih)} · {r.tur}{r.boyut ? ` · ${Math.round(r.boyut / 1024)} KB` : ''}</p></div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <a href={raporUrl(r.id)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-marka-600 hover:text-marka-700 border border-cizgi rounded-lg px-2.5 py-1.5"><Download size={13} /> İndir</a>
+                  <button onClick={() => raporuSil(r.id)} className="text-metin-yum hover:text-rose-600 p-1.5"><Trash2 size={14} /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardBody></Card>
     </>
   );
 }

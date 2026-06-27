@@ -424,6 +424,27 @@ function dosyaMetaYaz(id, patch) {
 }
 function dosyaIslemeyiTetikle() { if (!dosyaIsliyor && !dosyaIsleTimer) dosyaSpecAdim(); }
 
+// --- PDF RAPOR ARŞİVİ (tarayıcıda üretilen PDF'ler sunucuda saklanır, her cihazdan indirilir) ---
+const RAPOR_DIR = join(VERI, 'raporlar');
+if (!existsSync(RAPOR_DIR)) mkdirSync(RAPOR_DIR, { recursive: true });
+const raporlarOku = () => { try { return JSON.parse(readFileSync(join(VERI, 'raporlar.json'), 'utf8')); } catch { return []; } };
+const raporlarYaz = (a) => { try { writeFileSync(join(VERI, 'raporlar.json'), JSON.stringify(a, null, 2)); } catch (e) { console.error('raporlar yaz', e); } };
+app.post('/api/rapor/yukle', (req, res) => {
+  try {
+    const { ad = 'rapor.pdf', tur = 'asistan', pdf = '' } = req.body || {};
+    const buf = dataUrlBuf(pdf);
+    if (!buf || buf.length < 100) return res.status(400).json({ hata: 'PDF gelmedi' });
+    const id = 'r-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
+    writeFileSync(join(RAPOR_DIR, id + '.pdf'), buf);
+    const k = { id, ad, tur, tarih: new Date().toISOString(), boyut: buf.length };
+    const arr = raporlarOku(); arr.unshift(k); raporlarYaz(arr);
+    res.json({ ok: true, ...k });
+  } catch (e) { res.status(500).json({ hata: String(e?.message || e) }); }
+});
+app.get('/api/rapor/liste', (_q, res) => res.json({ raporlar: raporlarOku() }));
+app.post('/api/rapor/sil', (req, res) => { const { id } = req.body || {}; let a = raporlarOku(); a = a.filter((x) => x.id !== id); raporlarYaz(a); try { unlinkSync(join(RAPOR_DIR, guvId(id) + '.pdf')); } catch { /**/ } res.json({ ok: true }); });
+app.get('/api/rapor/:id', (req, res) => { const f = join(RAPOR_DIR, guvId(req.params.id) + '.pdf'); if (!existsSync(f)) return res.status(404).end(); res.type('application/pdf').send(readFileSync(f)); });
+
 app.post('/api/dosya/isle-basla', (_req, res) => { dosyaIslemeyiTetikle(); res.json({ ok: true, aktif: dosyaIsliyor }); });
 app.get('/api/dosya/isle-durum', (_req, res) => {
   const arr = dosyalarOku();

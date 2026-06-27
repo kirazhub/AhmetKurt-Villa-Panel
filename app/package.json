@@ -16,6 +16,7 @@
     "date-fns": "^4.4.0",
     "dxf-viewer": "^1.0.48",
     "heic2any": "^0.0.4",
+    "html2pdf.js": "^0.14.0",
     "lucide-react": "^1.21.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
