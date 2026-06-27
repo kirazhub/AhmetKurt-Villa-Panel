@@ -460,6 +460,22 @@ app.post('/api/rapor/yukle', (req, res) => {
   } catch (e) { res.status(500).json({ hata: String(e?.message || e) }); }
 });
 app.get('/api/rapor/liste', (_q, res) => res.json({ raporlar: raporlarOku() }));
+
+// --- AI SOHBET GEÇMİŞİ (her soru-cevap kalıcı, her cihazdan erişilir) ---
+const sohbetOku = () => { try { return JSON.parse(readFileSync(join(VERI, 'sohbet.json'), 'utf8')); } catch { return []; } };
+const sohbetYaz = (a) => { try { writeFileSync(join(VERI, 'sohbet.json'), JSON.stringify(a.slice(0, 500), null, 2)); } catch (e) { console.error('sohbet yaz', e); } };
+app.post('/api/sohbet/yukle', (req, res) => {
+  try {
+    const { soru = '', cevap = '', baslik = '' } = req.body || {};
+    if (!soru && !cevap) return res.status(400).json({ hata: 'boş' });
+    const id = 's-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
+    const k = { id, baslik: (baslik || soru).slice(0, 90), soru, cevap, tarih: new Date().toISOString() };
+    const arr = sohbetOku(); arr.unshift(k); sohbetYaz(arr);
+    res.json({ ok: true, ...k });
+  } catch (e) { res.status(500).json({ hata: String(e?.message || e) }); }
+});
+app.get('/api/sohbet/liste', (_q, res) => res.json({ sohbetler: sohbetOku() }));
+app.post('/api/sohbet/sil', (req, res) => { const { id } = req.body || {}; let a = sohbetOku(); a = a.filter((x) => x.id !== id); sohbetYaz(a); res.json({ ok: true }); });
 app.post('/api/rapor/sil', (req, res) => { const { id } = req.body || {}; let a = raporlarOku(); a = a.filter((x) => x.id !== id); raporlarYaz(a); try { unlinkSync(join(RAPOR_DIR, guvId(id) + '.pdf')); } catch { /**/ } res.json({ ok: true }); });
 app.get('/api/rapor/:id', (req, res) => { const f = join(RAPOR_DIR, guvId(req.params.id) + '.pdf'); if (!existsSync(f)) return res.status(404).end(); res.type('application/pdf').send(readFileSync(f)); });
 

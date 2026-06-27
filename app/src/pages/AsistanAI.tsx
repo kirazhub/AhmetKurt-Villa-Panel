@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Send, Loader2, Sparkles, AlertTriangle, KeyRound, RefreshCw, FileDown, Download, Trash2, FileText } from 'lucide-react';
+import { Bot, Send, Loader2, Sparkles, AlertTriangle, KeyRound, RefreshCw, FileDown, Download, Trash2, FileText, MessageSquareText, ChevronDown, ChevronUp } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { PageHeader, Card, CardBody, Button, Badge } from '../components/ui';
 import { tl, bugun, tarih } from '../lib/format';
@@ -74,10 +74,13 @@ export default function AsistanAI() {
   const [hazir, setHazir] = useState<boolean | null>(null); // backend + key durumu
   const [raporlar, setRaporlar] = useState<RaporMeta[]>([]);
   const [pdfYap, setPdfYap] = useState<number | null>(null);
+  const [gecmis, setGecmis] = useState<{ id: string; baslik: string; soru: string; cevap: string; tarih: string }[]>([]);
+  const [acikG, setAcikG] = useState<Record<string, boolean>>({});
   const sonRef = useRef<HTMLDivElement>(null);
 
   const raporlariYenile = () => raporListe().then(setRaporlar).catch(() => {});
-  useEffect(() => { raporlariYenile(); }, []);
+  const gecmisYenile = () => fetch('/api/sohbet/liste').then((r) => r.json()).then((d) => setGecmis(d.sohbetler || [])).catch(() => {});
+  useEffect(() => { raporlariYenile(); gecmisYenile(); }, []);
 
   const mesajPdf = async (i: number) => {
     setPdfYap(i);
@@ -90,6 +93,14 @@ export default function AsistanAI() {
     setPdfYap(null);
   };
   const raporuSil = async (id: string) => { if (!confirm('Bu PDF arşivden silinsin mi?')) return; await raporSil(id); raporlariYenile(); };
+
+  const [gPdf, setGPdf] = useState<string | null>(null);
+  const gecmisPdf = async (k: { id: string; baslik: string; soru: string; cevap: string }) => {
+    setGPdf(k.id);
+    try { await pdfUret('AI Yanıtı — ' + k.baslik.slice(0, 40), `Soru: ${k.soru}\n\n${k.cevap}`, 'asistan', k.baslik); await raporlariYenile(); } catch { alert('PDF oluşturulamadı.'); }
+    setGPdf(null);
+  };
+  const gecmisSil = async (id: string) => { if (!confirm('Bu soru-cevap silinsin mi?')) return; await fetch('/api/sohbet/sil', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); gecmisYenile(); };
 
   useEffect(() => { sonRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [mesajlar, yukleniyor]);
 
@@ -128,7 +139,12 @@ export default function AsistanAI() {
         body: JSON.stringify({ mesajlar: yeni, baglam }),
       });
       const d = await r.json();
-      setMesajlar((m) => [...m, { role: 'assistant', icerik: r.ok ? d.cevap : `Bir sorun oldu: ${d.hata || 'bilinmeyen'}` }]);
+      const cevap = r.ok ? d.cevap : `Bir sorun oldu: ${d.hata || 'bilinmeyen'}`;
+      setMesajlar((m) => [...m, { role: 'assistant', icerik: cevap }]);
+      if (r.ok && d.cevap) {
+        fetch('/api/sohbet/yukle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ soru, cevap: d.cevap, baslik: soru }) })
+          .then(() => gecmisYenile()).catch(() => {});
+      }
     } catch {
       setMesajlar((m) => [...m, { role: 'assistant', icerik: 'Bağlanılamadı. Arka uç (AI sunucusu) çalışıyor mu?' }]);
     }
@@ -243,6 +259,43 @@ export default function AsistanAI() {
       <p className="mt-4 text-xs text-metin-yum flex items-center gap-1.5">
         <AlertTriangle size={13} /> Asistan yardımcıdır, danışmanlık verir; kritik kararlarda şantiye şefin ve yapı denetimle de teyit et.
       </p>
+
+      {/* Soru-Cevap Geçmişi (kalıcı) */}
+      <Card className="mt-5"><CardBody>
+        <div className="flex items-center justify-between mb-3">
+          <p className="font-semibold text-metin flex items-center gap-2"><MessageSquareText size={16} className="text-marka-500" /> Soru-Cevap Geçmişi <span className="text-xs font-normal text-metin-yum">({gecmis.length} kayıt, kalıcı)</span></p>
+          <Button variant="ghost" size="sm" onClick={gecmisYenile}><RefreshCw size={14} /></Button>
+        </div>
+        {gecmis.length === 0 ? (
+          <p className="text-sm text-metin-yum">Henüz kayıt yok. Sorduğun her soru cevabıyla birlikte burada <b>kalıcı</b> saklanır; tekrar girince görürsün.</p>
+        ) : (
+          <div className="divide-y divide-cizgi">
+            {gecmis.map((k) => {
+              const acik = !!acikG[k.id];
+              return (
+                <div key={k.id} className="py-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <button onClick={() => setAcikG((s) => ({ ...s, [k.id]: !acik }))} className="flex-1 min-w-0 text-left flex items-start gap-2 cursor-pointer">
+                      {acik ? <ChevronUp size={16} className="text-marka-500 shrink-0 mt-0.5" /> : <ChevronDown size={16} className="text-metin-yum shrink-0 mt-0.5" />}
+                      <div className="min-w-0"><p className="font-medium text-metin text-sm">{k.baslik}</p><p className="text-xs text-metin-yum">{tarih(k.tarih)}</p></div>
+                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button onClick={() => gecmisPdf(k)} disabled={gPdf === k.id} className="inline-flex items-center gap-1 text-xs text-marka-600 hover:text-marka-700 border border-cizgi rounded-lg px-2 py-1.5">{gPdf === k.id ? <Loader2 size={12} className="animate-spin" /> : <FileDown size={12} />} PDF</button>
+                      <button onClick={() => gecmisSil(k.id)} className="text-metin-yum hover:text-rose-600 p-1.5"><Trash2 size={13} /></button>
+                    </div>
+                  </div>
+                  {acik && (
+                    <div className="mt-2 ml-6 space-y-2">
+                      <div className="rounded-lg bg-marka-500 text-white text-sm px-3 py-2 whitespace-pre-wrap inline-block max-w-full">{k.soru}</div>
+                      <div className="rounded-lg bg-zemin text-metin text-sm px-3 py-2"><Bicimli metin={k.cevap} /></div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardBody></Card>
 
       {/* PDF Arşivi */}
       <Card className="mt-5"><CardBody>
