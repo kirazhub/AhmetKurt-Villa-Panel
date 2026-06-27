@@ -136,19 +136,15 @@ async function claudeVision(systemMetin, metin, gorselUrl, maxTokens) {
   return { metin: d.choices?.[0]?.message?.content?.trim() || '', model };
 }
 
-// --- Belgeden teknik spec çıkar (m², ölçü, kot, malzeme...) ---
-app.post('/api/ai/belge-spec', async (req, res) => {
-  if (!yapilandirilmis()) return res.status(503).json({ hata: 'OpenRouter API anahtarı tanımlı değil (.env).' });
-  try {
-    const { ad = '', gorsel = '' } = req.body || {};
-    if (!gorsel || !/^(data:image|https?:\/\/)/.test(String(gorsel))) return res.status(400).json({ hata: 'Geçerli bir görsel (dataURL veya http URL) gerekli' });
-    const sys = `Sen kıdemli bir mimar + inşaat (statik) + tesisat mühendisi gözüyle çalışan bir PROJE ANALİZ uzmanısın. Sana verilen görsel; vaziyet planı, mimari kat planı, görünüş, kesit, statik/kalıp planı, tesisat (sıhhi/ısıtma/elektrik) projesi, ölçü kağıdı, teknik çizim, fatura veya şantiye fotoğrafı olabilir. Önce belgenin TÜRÜNÜ tanı, sonra o türe uygun TÜM bilgiyi profesyonelce, derinlemesine çıkar. SADECE görselde GERÇEKTEN çizili/yazılı olanı yaz; tahmin/uydurma YAPMA. Okunamayan/görselde olmayan şeyi "okunamadı" ya da "bu paftada yok" diye belirt.
+// --- Belge analiz promptu (hem /api/ai/belge-spec hem sunucu kuyruğu kullanır) ---
+function belgeSpecPrompt(ad) {
+  const sys = `Sen kıdemli bir mimar + inşaat (statik) + tesisat mühendisi gözüyle çalışan bir PROJE ANALİZ uzmanısın. Sana verilen görsel; vaziyet planı, mimari kat planı, görünüş, kesit, statik/kalıp planı, tesisat (sıhhi/ısıtma/elektrik) projesi, ölçü kağıdı, teknik çizim, fatura veya şantiye fotoğrafı olabilir. Önce belgenin TÜRÜNÜ tanı, sonra o türe uygun TÜM bilgiyi profesyonelce, derinlemesine çıkar. SADECE görselde GERÇEKTEN çizili/yazılı olanı yaz; tahmin/uydurma YAPMA. Okunamayan/görselde olmayan şeyi "okunamadı" ya da "bu paftada yok" diye belirt.
 
 YAZIM KURALLARI:
 - Kusursuz, akıcı, dilbilgisi DOĞRU Türkçe. Bozuk kelime/harf hatası/yarım cümle OLMASIN. Türkçe karakterleri (ç,ğ,ı,ö,ş,ü) doğru kullan.
 - Rakamları görselden dikkatle oku; emin olmadığını "okunamadı" yaz.
 - Net başlıklarla, madde madde yaz. Tümü Türkçe.`;
-    const istem = `Belge: "${ad}"
+  const istem = `Belge: "${ad}"
 
 ÖNCE: Belgenin türünü tek satırda yaz (örn. "Belge türü: 1. Normal Kat Planı, Ö:1/50").
 
@@ -166,6 +162,16 @@ Sonra AŞAĞIDAKİ başlıklardan SADECE bu belgede karşılığı olanları, de
 **Önemli Notlar & Riskler**: çizimde dikkat çeken her teknik not, uyarı, lejant açıklaması.
 
 Görselde olmayan başlığı ATLAMA — ama olmayan için kısaca "bu paftada yok" de. Kısa girizgâh yazma, doğrudan "Belge türü:" ile başla.`;
+  return { sys, istem };
+}
+
+// --- Belgeden teknik spec çıkar (m², ölçü, kot, malzeme...) ---
+app.post('/api/ai/belge-spec', async (req, res) => {
+  if (!yapilandirilmis()) return res.status(503).json({ hata: 'OpenRouter API anahtarı tanımlı değil (.env).' });
+  try {
+    const { ad = '', gorsel = '' } = req.body || {};
+    if (!gorsel || !/^(data:image|https?:\/\/)/.test(String(gorsel))) return res.status(400).json({ hata: 'Geçerli bir görsel (dataURL veya http URL) gerekli' });
+    const { sys, istem } = belgeSpecPrompt(ad);
     const { metin } = await claudeVision(sys, istem, gorsel, 3500);
     res.json({ spec: metin });
   } catch (e) {
@@ -343,6 +349,7 @@ app.post('/api/dosya/yukle', (req, res) => {
     writeFileSync(join(ONIZLEME_DIR, id + '.jpg'), kbuf);
     const kayit = { id, ad, tur, etiket, tarih: new Date().toISOString(), tarihCekim: tarihCekim || '', boyut: obuf.length, meta: meta || {} };
     const arr = dosyalarOku(); arr.push(kayit); dosyalarYaz(arr);
+    if (kayit.tur !== 'drone') setTimeout(dosyaIslemeyiTetikle, 500); // otomatik analiz (drone hariç)
     res.json({ ok: true, ...kayit });
   } catch (e) { res.status(500).json({ hata: 'Yüklenemedi', detay: String(e?.message || e) }); }
 });
@@ -385,6 +392,49 @@ app.get('/api/dosya/:id/k', (req, res) => {
   if (!existsSync(f)) return res.status(404).end();
   res.type('image/jpeg').set('Cache-Control', 'private, max-age=86400').send(readFileSync(f));
 });
+
+// --- SUNUCU TARAFI TOPLU İŞLEME: spec'siz görselleri arka planda sırayla AI ile oku ---
+// (Tarayıcı kapalıyken bile çalışır — "kendi başına çalışan operasyon")
+let dosyaIsleTimer = null;
+let dosyaIsliyor = false;
+async function dosyaSpecAdim() {
+  dosyaIsleTimer = null;
+  if (!yapilandirilmis()) { dosyaIsliyor = false; return; }
+  const arr = dosyalarOku();
+  const it = arr.find((x) => !x.spec && x.specDurum !== 'hata' && x.specDurum !== 'atlandi');
+  if (!it) { dosyaIsliyor = false; return; }
+  dosyaIsliyor = true;
+  try {
+    const f = join(GORSEL_DIR, guvId(it.id) + '.jpg');
+    if (!existsSync(f)) { dosyaMetaYaz(it.id, { specDurum: 'atlandi' }); }
+    else {
+      const dataUrl = 'data:image/jpeg;base64,' + readFileSync(f).toString('base64');
+      const { sys, istem } = belgeSpecPrompt(it.ad || it.id);
+      const { metin } = await claudeVision(sys, istem, dataUrl, 3500);
+      dosyaMetaYaz(it.id, { spec: metin, specTarih: new Date().toISOString(), specDurum: 'islendi' });
+    }
+  } catch (e) {
+    dosyaMetaYaz(it.id, { specDurum: 'hata', specHata: String(e?.message || e).slice(0, 200) });
+  }
+  dosyaIsleTimer = setTimeout(dosyaSpecAdim, 1500); // sıradaki (rate-limit için kısa ara)
+}
+function dosyaMetaYaz(id, patch) {
+  const arr = dosyalarOku(); const i = arr.findIndex((x) => x.id === id);
+  if (i >= 0) { arr[i] = { ...arr[i], ...patch }; dosyalarYaz(arr); }
+}
+function dosyaIslemeyiTetikle() { if (!dosyaIsliyor && !dosyaIsleTimer) dosyaSpecAdim(); }
+
+app.post('/api/dosya/isle-basla', (_req, res) => { dosyaIslemeyiTetikle(); res.json({ ok: true, aktif: dosyaIsliyor }); });
+app.get('/api/dosya/isle-durum', (_req, res) => {
+  const arr = dosyalarOku();
+  const toplam = arr.length;
+  const islenen = arr.filter((x) => x.spec).length;
+  const hata = arr.filter((x) => x.specDurum === 'hata').length;
+  const bekleyen = arr.filter((x) => !x.spec && x.specDurum !== 'hata' && x.specDurum !== 'atlandi').length;
+  res.json({ aktif: dosyaIsliyor, toplam, islenen, hata, bekleyen });
+});
+// Sunucu açılışında yarım kalan işlemeyi devam ettir
+setTimeout(dosyaIslemeyiTetikle, 8000);
 
 // WhatsApp Web'i başlat (QR ile bağlanır)
 wa.baslat(VERI);

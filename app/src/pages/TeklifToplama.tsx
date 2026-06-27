@@ -2,18 +2,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { Sparkles, Loader2, KeyRound, CheckCircle2, UserCog, Inbox, ChevronDown, ChevronUp, Printer, Image as ImageIcon, Building, Mail, Phone, Wand2, Search, Send, Square, CheckSquare } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { PageHeader, Card, CardBody, Button, Badge, Field, Input, Select, Textarea } from '../components/ui';
-import { blobGetir } from '../lib/idb';
+import { dosyaOnizleme, dosyaDataUrl } from '../lib/sunucuGorsel';
 import { tarih, bugun } from '../lib/format';
 import { TASERON_KATEGORILERI } from '../types';
-
-function blobToB64(blob: Blob): Promise<string> {
-  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = rej; r.readAsDataURL(blob); });
-}
 
 interface Firma { ad: string; email?: string; telefon?: string; web?: string; sehir?: string; }
 
 export default function TeklifToplama() {
-  const { belgeler, proje, gonderenProfil, gonderenProfilGuncelle, firmaEkle, rfqEkle, rfqKayitlari } = useStore();
+  const { proje, gonderenProfil, gonderenProfilGuncelle, firmaEkle, rfqEkle, rfqKayitlari } = useStore();
+  const belgeler = useStore((s) => s.sunucuDosyalar);
+  const dosyalariYenile = useStore((s) => s.dosyalariYenile);
   const [mailHazir, setMailHazir] = useState<boolean | null>(null);
   const [mailAdres, setMailAdres] = useState('');
   const [profilAcik, setProfilAcik] = useState(false);
@@ -27,7 +25,6 @@ export default function TeklifToplama() {
   const [govde, setGovde] = useState('');
   const [mailYaziyor, setMailYaziyor] = useState(false);
   const [secilenEkler, setSecilenEkler] = useState<Record<string, boolean>>({});
-  const [thumb, setThumb] = useState<Record<string, string>>({});
 
   // 2) Firma arama + seçim
   const [bolge, setBolge] = useState('İstanbul Avrupa Yakası / Arnavutköy');
@@ -44,28 +41,15 @@ export default function TeklifToplama() {
   const [gelenYukleniyor, setGelenYukleniyor] = useState(false);
   const [acikMail, setAcikMail] = useState<Record<number, boolean>>({});
 
-  const fotolar = useMemo(() => belgeler.filter((b) => b.tur === 'foto' && b.blobId), [belgeler]);
+  const fotolar = useMemo(() => belgeler.filter((b) => b.tur === 'foto'), [belgeler]);
   const specliSayi = useMemo(() => belgeler.filter((b) => b.spec).length, [belgeler]);
   const emailliFirmalar = firmalar.filter((f) => f.email);
   const seciliEmailler = emailliFirmalar.filter((f) => secili[f.email!]).map((f) => f.email!);
 
   useEffect(() => {
+    dosyalariYenile();
     fetch('/api/mail/health').then((r) => r.json()).then((d) => { setMailHazir(!!d.yapilandirilmis); setMailAdres(d.adres || ''); }).catch(() => setMailHazir(false));
-  }, []);
-
-  useEffect(() => {
-    let iptal = false; const olusan: string[] = [];
-    (async () => {
-      const map: Record<string, string> = {};
-      for (const b of fotolar) {
-        if (thumb[b.id]) { map[b.id] = thumb[b.id]; continue; }
-        try { const blob = await blobGetir(b.blobId!); if (blob) { const u = URL.createObjectURL(blob); map[b.id] = u; olusan.push(u); } } catch { /**/ }
-      }
-      if (!iptal) setThumb((t) => ({ ...t, ...map }));
-    })();
-    return () => { iptal = true; olusan.forEach((u) => URL.revokeObjectURL(u)); };
-    // eslint-disable-next-line
-  }, [fotolar.length]);
+  }, [dosyalariYenile]);
 
   const imzaMetni = () => `${gonderenProfil.ad}\n${gonderenProfil.unvan} · Kurt GMG İnşaat${gonderenProfil.telefon ? '\nTel: ' + gonderenProfil.telefon : ''}\nraifkurt@gmail.com`;
   const speclerTopla = () => belgeler.filter((b) => b.spec).map((b) => `### ${b.ad}\n${b.spec}`).join('\n\n');
@@ -109,8 +93,7 @@ export default function TeklifToplama() {
     try {
       const ekler: { ad: string; base64: string }[] = [];
       for (const b of fotolar.filter((x) => secilenEkler[x.id])) {
-        const blob = await blobGetir(b.blobId!);
-        if (blob) ekler.push({ ad: b.ad, base64: await blobToB64(blob) });
+        try { const durl = await dosyaDataUrl(b.id); const b64 = durl.split(',')[1]; if (b64) ekler.push({ ad: b.ad, base64: b64 }); } catch { /**/ }
       }
       const r = await fetch('/api/mail/gonder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ alicilar: seciliEmailler, konu, govde, ekler }) });
       const d = await r.json();
@@ -202,7 +185,7 @@ export default function TeklifToplama() {
                 return (
                   <button key={b.id} onClick={() => setSecilenEkler((s) => ({ ...s, [b.id]: !sec }))}
                     className={`relative aspect-square rounded-xl overflow-hidden border-2 transition cursor-pointer ${sec ? 'border-marka-500 ring-2 ring-marka-200' : 'border-cizgi hover:border-marka-300'}`}>
-                    {thumb[b.id] ? <img src={thumb[b.id]} alt={b.ad} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-zemin flex items-center justify-center"><ImageIcon size={18} className="text-metin-yum" /></div>}
+                    <img src={dosyaOnizleme(b.id)} alt={b.ad} className="w-full h-full object-cover" loading="lazy" />
                     {sec && <div className="absolute top-1 right-1 bg-marka-500 text-white rounded-full p-0.5"><CheckCircle2 size={14} /></div>}
                   </button>
                 );

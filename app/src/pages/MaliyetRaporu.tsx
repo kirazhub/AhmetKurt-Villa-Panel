@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Calculator, Loader2, Sparkles, AlertTriangle, RefreshCw, TrendingUp, Package, Info } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { PageHeader, Card, CardBody, Button, EmptyState, Badge } from '../components/ui';
@@ -27,7 +27,9 @@ function Hucre({ v, kur }: { v?: MaliyetVaryasyon; kur?: number | null }) {
 }
 
 export default function MaliyetRaporu() {
-  const belgeler = useStore((s) => s.belgeler);
+  const belgeler = useStore((s) => s.sunucuDosyalar);
+  const dosyalariYenile = useStore((s) => s.dosyalariYenile);
+  useEffect(() => { dosyalariYenile(); }, [dosyalariYenile]);
   const proje = useStore((s) => s.proje);
   const mahaller = useStore((s) => s.mahaller);
   const rapor = useStore((s) => s.maliyetRaporu);

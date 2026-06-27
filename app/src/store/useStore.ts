@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { dosyaListe, type SunucuDosya } from '../lib/sunucuGorsel';
 import type { Faz, Mahal, IsKalemi, Taseron, Teklif, Odeme, Belge, Proje, SahaGunluk, Sarfiyat, IstekKalemi, Ders, Danisma, Firma, RfqKayit, GonderenProfil, MaliyetRaporu } from '../types';
 import { PROJE, FAZLAR, MAHALLER, IS_KALEMLERI, ISTEK_LISTESI } from '../data/seed';
 import { uid } from '../lib/format';
@@ -30,6 +31,7 @@ interface State {
   gonderenProfil: GonderenProfil; // teklif maili imzası
   rehberBrifing: Record<string, string>; // rehber bölüm id -> AI brifing metni (önbellek)
   maliyetRaporu: MaliyetRaporu | null; // AI'nın ürettiği 3 senaryolu maliyet raporu
+  sunucuDosyalar: SunucuDosya[]; // sunucu görsel deposu listesi (cache; sunucudan gelir)
   projeAnaliz: { metin: string; tarih: string } | null; // tüm planlardan bütünleşik analiz
   usdKur: number | null;   // güncel 1 USD = ? TL
   usdKurTarih: string;     // kurun tarihi
@@ -63,6 +65,8 @@ interface State {
   // Maliyet raporu
   maliyetRaporuKaydet: (r: MaliyetRaporu | null) => void;
   projeAnalizKaydet: (a: { metin: string; tarih: string } | null) => void;
+  dosyalariYenile: () => Promise<void>;
+  sunucuDosyaSpec: (id: string, patch: Partial<SunucuDosya>) => void;
   kurGuncelle: (usd: number, tarih: string) => void;
 
   // Saha takibi
@@ -126,6 +130,7 @@ export const useStore = create<State>()(
       rehberBrifing: {},
       maliyetRaporu: null,
       projeAnaliz: null,
+      sunucuDosyalar: [],
       usdKur: null,
       usdKurTarih: '',
 
@@ -194,6 +199,9 @@ export const useStore = create<State>()(
       maliyetRaporuKaydet: (r) => set(() => ({ maliyetRaporu: r })),
 
       projeAnalizKaydet: (a) => set(() => ({ projeAnaliz: a })),
+
+      dosyalariYenile: async () => { try { const d = await dosyaListe(); set(() => ({ sunucuDosyalar: d })); } catch { /* yoksay */ } },
+      sunucuDosyaSpec: (id, patch) => set((st) => ({ sunucuDosyalar: st.sunucuDosyalar.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
 
       kurGuncelle: (usd, tarih) => set(() => ({ usdKur: usd, usdKurTarih: tarih })),
 

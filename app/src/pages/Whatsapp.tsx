@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Loader2, Sparkles, Wand2, CheckSquare, Square, Mail, Send, ListPlus, CheckCircle2, Info, Search, Building, Phone } from 'lucide-react';
 import { PageHeader, Card, CardBody, Button, Badge, Field, Input, Select, Textarea } from '../components/ui';
 import { useStore } from '../store/useStore';
@@ -8,7 +8,9 @@ interface Firma { ad: string; email?: string; telefon?: string; web?: string; se
 
 export default function Whatsapp() {
   const gonderenProfil = useStore((s) => s.gonderenProfil);
-  const belgeler = useStore((s) => s.belgeler);
+  const belgeler = useStore((s) => s.sunucuDosyalar);
+  const dosyalariYenile = useStore((s) => s.dosyalariYenile);
+  useEffect(() => { dosyalariYenile(); }, [dosyalariYenile]);
   const proje = useStore((s) => s.proje);
 
   const [kategori, setKategori] = useState('Hafriyat / Kazı');
