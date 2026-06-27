@@ -27,7 +27,7 @@ export default function Whatsapp() {
   const [gonderiliyor, setGonderiliyor] = useState(false);
   const [sonuc, setSonuc] = useState<string | null>(null);
 
-  const imza = `${gonderenProfil.ad}\n${gonderenProfil.unvan}`;
+  const imza = `${gonderenProfil.ad}\n${gonderenProfil.unvan} · Kurt GMG İnşaat`;
   const speclerTopla = () => belgeler.filter((b) => b.spec).map((b) => `### ${b.ad}\n${b.spec}`).join('\n\n');
   const specliSayi = belgeler.filter((b) => b.spec).length;
   const telefonlu = firmalar.filter((f) => f.telefon);

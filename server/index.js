@@ -338,7 +338,7 @@ app.post('/api/ai/mesaj-yaz', async (req, res) => {
   if (!yapilandirilmis()) return res.status(503).json({ hata: 'OpenRouter API anahtarı tanımlı değil (.env).' });
   try {
     const { kabaTarif = '', baslik = '', profil = '', kanal = 'whatsapp', specler = '', proje = '', teknikDetay = false } = req.body || {};
-    const sys = `Sen "Ahmet Kurt Villa Projesi"nin satın alma ve koordinasyon yöneticisi adına yazan, çok iyi Türkçe yazan profesyonel bir asistansın. Görevin: kullanıcının dağınık/eksik notlarını, firmaya gönderilecek DÜZGÜN, KISA ve NET bir ${kanal === 'whatsapp' ? 'WhatsApp' : 'e-posta'} mesajına dönüştürmek.
+    const sys = `Sen "Kurt GMG İnşaat" firmasının (Ahmet Kurt Villa projesini yürüten) satın alma ve koordinasyon yöneticisi adına yazan, çok iyi Türkçe yazan profesyonel bir asistansın. Görevin: kullanıcının dağınık/eksik notlarını, firmaya gönderilecek DÜZGÜN, KISA ve NET bir ${kanal === 'whatsapp' ? 'WhatsApp' : 'e-posta'} mesajına dönüştürmek.
 
 KURALLAR:
 - Selamla, kısaca kendini/projeyi tanıt, ne istediğini net yaz, fiyat + termin (ne zaman başlanır/biter) iste, iletişim için teşekkür et.
@@ -623,7 +623,7 @@ app.post('/api/teklif-mail-yaz', async (req, res) => {
   if (!yapilandirilmis()) return res.status(503).json({ hata: 'OpenRouter anahtarı yok' });
   try {
     const { kategori = '', bolge = 'İstanbul', sorular = '', imza = '', kabaNot = '', proje = '', specler = '', teknikDetay = true } = req.body || {};
-    const mailSys = `Sen "Ahmet Kurt Villa Projesi"nin satın alma ve teknik koordinasyon yöneticisi adına yazan, çok deneyimli bir inşaat satın alma uzmanısın. Görevin: profesyonel taşeron/tedarikçi firmalara gönderilecek DETAYLI, bilgi verici ve net bilgi isteyici bir teklif e-postası yazmak. Profesyonel firmalar; işin kapsamını, ölçüleri ve beklentileri net anlatan, ciddi hazırlanmış talepleri ciddiye alır. Resmi ama akıcı bir dil kullan. SADECE e-posta gövdesini yaz (konu satırı ekleme, ön/son açıklama yazma).`;
+    const mailSys = `Sen "Kurt GMG İnşaat" firmasının (Ahmet Kurt Villa projesini yürüten) satın alma ve teknik koordinasyon yöneticisi adına yazan, çok deneyimli bir inşaat satın alma uzmanısın. Görevin: profesyonel taşeron/tedarikçi firmalara gönderilecek DETAYLI, bilgi verici ve net bilgi isteyici bir teklif e-postası yazmak. Profesyonel firmalar; işin kapsamını, ölçüleri ve beklentileri net anlatan, ciddi hazırlanmış talepleri ciddiye alır. Resmi ama akıcı bir dil kullan. SADECE e-posta gövdesini yaz (konu satırı ekleme, ön/son açıklama yazma).`;
     const mailIstem = `İŞ / KATEGORİ: ${kategori}
 BÖLGE: ${bolge}
 
@@ -647,7 +647,7 @@ ${sorular ? `- Ayrıca şu özel soruları da sor:\n${sorular}` : ''}
 
 Türkçe, resmi-profesyonel, akıcı ve bilgi yoğun. Gereksiz uzatma. Sadece gövde metni.`;
     const { metin: govde } = await claude(mailSys, [{ role: 'user', icerik: mailIstem }], 2000);
-    const konu = `Teklif Talebi — ${kategori} — Ahmet Kurt Villa Projesi`;
+    const konu = `Teklif Talebi — ${kategori} — Kurt GMG İnşaat`;
     res.json({ govde, konu });
   } catch (e) {
     res.status(e.status || 500).json({ hata: 'Mail yazılamadı', detay: e.detay || String(e?.message || e) });
@@ -703,9 +703,10 @@ app.post('/api/mail/gonder', async (req, res) => {
     if (!Array.isArray(alicilar) || alicilar.length === 0) return res.status(400).json({ hata: 'Alıcı yok.' });
     const attachments = (ekler || []).map((e) => ({ filename: e.ad, content: Buffer.from(String(e.base64 || ''), 'base64') }));
     const info = await transport().sendMail({
-      from: `Ahmet Kurt Villa Projesi <${MAIL_USER}>`,
+      from: `Kurt GMG İnşaat <${MAIL_USER}>`,
       to: MAIL_USER,                 // kendine
       bcc: alicilar,                 // firmalar birbirini görmesin
+      replyTo: 'raifkurt@gmail.com', // firma "yanıtla" derse Raif Kurt'un Gmail'ine düşer
       subject: konu || 'Teklif Talebi',
       text: govde,
       attachments,
@@ -746,7 +747,7 @@ app.post('/api/wa/liste-mail', async (req, res) => {
       <table style="border-collapse:collapse;width:100%;font-size:14px"><thead><tr><th style="text-align:left;padding:8px 10px;border-bottom:2px solid #d97706">#</th><th style="text-align:left;padding:8px 10px;border-bottom:2px solid #d97706">Firma / Numara</th><th style="text-align:left;padding:8px 10px;border-bottom:2px solid #d97706">Gönder</th></tr></thead><tbody>${satirlar}</tbody></table>
     </div>`;
     const text = `WhatsApp Gönderim Listesi (${kayitlar.length} firma)\n\nMESAJ:\n${mesaj}\n\nFİRMALAR:\n` + kayitlar.map((k) => `${k.ad ? k.ad + ' — ' : ''}${k.tel} → https://wa.me/${norm(k.tel)}?text=${enc}`).join('\n');
-    await transport().sendMail({ from: `Ahmet Kurt Villa Paneli <${MAIL_USER}>`, to: hedefMail, subject: `WhatsApp Gönderim Listesi — ${kayitlar.length} firma`, text, html });
+    await transport().sendMail({ from: `Kurt GMG İnşaat <${MAIL_USER}>`, to: hedefMail, subject: `WhatsApp Gönderim Listesi — ${kayitlar.length} firma`, text, html });
     res.json({ ok: true, adet: kayitlar.length, hedef: hedefMail });
   } catch (e) {
     res.status(500).json({ hata: 'Gönderilemedi', detay: String(e?.message || e) });

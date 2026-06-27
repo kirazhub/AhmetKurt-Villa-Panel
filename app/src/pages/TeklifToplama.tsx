@@ -67,7 +67,7 @@ export default function TeklifToplama() {
     // eslint-disable-next-line
   }, [fotolar.length]);
 
-  const imzaMetni = () => `${gonderenProfil.ad}\n${gonderenProfil.unvan}${gonderenProfil.telefon ? '\nTel: ' + gonderenProfil.telefon : ''}\ninsaat@pokkop.com`;
+  const imzaMetni = () => `${gonderenProfil.ad}\n${gonderenProfil.unvan} · Kurt GMG İnşaat${gonderenProfil.telefon ? '\nTel: ' + gonderenProfil.telefon : ''}\nraifkurt@gmail.com`;
   const speclerTopla = () => belgeler.filter((b) => b.spec).map((b) => `### ${b.ad}\n${b.spec}`).join('\n\n');
 
   // 1) AI ile profesyonel mail yaz

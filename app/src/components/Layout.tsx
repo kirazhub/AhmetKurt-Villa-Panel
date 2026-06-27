@@ -58,10 +58,10 @@ function NavItems({ onClick }: { onClick?: () => void }) {
 function Marka() {
   return (
     <div className="px-5 py-5 flex items-center gap-3 shrink-0">
-      <div className="w-10 h-10 rounded-xl bg-marka-500 flex items-center justify-center text-white font-bold shadow">AK</div>
+      <div className="w-10 h-10 rounded-xl bg-marka-500 flex items-center justify-center text-white font-bold shadow">KG</div>
       <div className="leading-tight">
-        <p className="text-white font-semibold text-sm">Ahmet Kurt Villa</p>
-        <p className="text-slate-400 text-xs">İnşaat Yönetim Paneli</p>
+        <p className="text-white font-semibold text-sm">Kurt GMG İnşaat</p>
+        <p className="text-slate-400 text-xs">Proje Yönetim Paneli</p>
       </div>
     </div>
   );
